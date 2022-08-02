@@ -27,21 +27,22 @@ def pack_ethaddr(ea):
 def output(attrs):
     # Compose flow.
 
-    flow = {}
-    flow['DL_SRC'] = "00:02:e3:0f:80:a4"
-    flow['DL_DST'] = "00:1a:92:40:ac:05"
-    flow['NW_PROTO'] = 0
-    flow['NW_TOS'] = 0
-    flow['NW_SRC'] = '0.0.0.0'
-    flow['NW_DST'] = '0.0.0.0'
-    flow['TP_SRC'] = 0
-    flow['TP_DST'] = 0
-    if 'DL_VLAN' in attrs:
-        flow['DL_VLAN'] = {'none': 0xffff,
-                           'zero': 0,
-                           'nonzero': 0x0123}[attrs['DL_VLAN']]
-    else:
-        flow['DL_VLAN'] = 0xffff  # OFP_VLAN_NONE
+    flow = {
+        'DL_SRC': "00:02:e3:0f:80:a4",
+        'DL_DST': "00:1a:92:40:ac:05",
+        'NW_PROTO': 0,
+        'NW_TOS': 0,
+        'NW_SRC': '0.0.0.0',
+        'NW_DST': '0.0.0.0',
+        'TP_SRC': 0,
+        'TP_DST': 0,
+        'DL_VLAN': {'none': 0xFFFF, 'zero': 0, 'nonzero': 0x0123}[
+            attrs['DL_VLAN']
+        ]
+        if 'DL_VLAN' in attrs
+        else 0xFFFF,
+    }
+
     if attrs['DL_HEADER'] == '802.2':
         flow['DL_TYPE'] = 0x5ff  # OFP_DL_TYPE_NOT_ETH_TYPE
     elif attrs['DL_TYPE'] == 'ip':
@@ -174,7 +175,7 @@ def output(attrs):
                   + packet[len_ofs + 2:])
 
     print(' '.join(['%s=%s' for k, v in attrs.items()]))
-    print(' '.join(['%s=%s' for k, v in flow.items()]))
+    print(' '.join(['%s=%s' for _ in flow]))
     print()
 
     flows.write(struct.pack('>LH',

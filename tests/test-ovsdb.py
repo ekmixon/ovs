@@ -37,10 +37,7 @@ vlog.init(None)
 
 
 def unbox_json(json):
-    if type(json) == list and len(json) == 1:
-        return json[0]
-    else:
-        return json
+    return json[0] if type(json) == list and len(json) == 1 else json
 
 
 def do_default_atoms():
@@ -48,7 +45,7 @@ def do_default_atoms():
         if type_ == ovs.db.types.VoidType:
             continue
 
-        sys.stdout.write("%s: " % type_.to_string())
+        sys.stdout.write(f"{type_.to_string()}: ")
 
         atom = data.Atom.default(type_)
         if atom != data.Atom.default(type_):
@@ -156,17 +153,17 @@ def do_parse_schema(schema_string):
 def get_simple_printable_row_string(row, columns):
     s = ""
     for column in columns:
-        if hasattr(row, column) and not (type(getattr(row, column))
-                                         is ovs.db.data.Atom):
+        if (
+            hasattr(row, column)
+            and type(getattr(row, column)) is not ovs.db.data.Atom
+        ):
             value = getattr(row, column)
             if isinstance(value, dict):
                 value = sorted((row_to_uuid(k), row_to_uuid(v))
                                for k, v in value.items())
-            if isinstance(value, (list, tuple)):
+            if isinstance(value, (list, tuple, list)):
                 value = sorted((row_to_uuid(v) for v in value))
-            elif isinstance(value, list):
-                value = sorted(row_to_uuid(v) for v in value)
-            s += "%s=%s " % (column, value)
+            s += f"{column}={value} "
     s = s.strip()
     s = re.sub('""|,|u?\'', "", s)
     s = re.sub(r'UUID\(([^)]+)\)', r'\1', s)
@@ -177,9 +174,20 @@ def get_simple_printable_row_string(row, columns):
 
 
 def get_simple_table_printable_row(row, *additional_columns):
-    simple_columns = ["i", "r", "b", "s", "u", "ia",
-                      "ra", "ba", "sa", "ua"]
-    simple_columns.extend(additional_columns)
+    simple_columns = [
+        "i",
+        "r",
+        "b",
+        "s",
+        "u",
+        "ia",
+        "ra",
+        "ba",
+        "sa",
+        "ua",
+        *additional_columns,
+    ]
+
     return get_simple_printable_row_string(row, simple_columns)
 
 
@@ -209,27 +217,25 @@ def get_simple6_table_printable_row(row):
 
 
 def get_link1_table_printable_row(row):
-    s = ["i=%s k=" % row.i]
+    s = [f"i={row.i} k="]
     if hasattr(row, "k") and row.k:
         s.append(str(row.k.i))
     if hasattr(row, "ka"):
-        s.append(" ka=[")
-        s.append(' '.join(sorted(str(ka.i) for ka in row.ka)))
-        s.append("] l2=")
+        s.extend((" ka=[", ' '.join(sorted(str(ka.i) for ka in row.ka)), "] l2="))
     if hasattr(row, "l2") and row.l2:
         s.append(str(row.l2[0].i))
     return ''.join(s)
 
 
 def get_link2_table_printable_row(row):
-    s = "i=%s l1=" % row.i
+    s = f"i={row.i} l1="
     if hasattr(row, "l1") and row.l1:
         s += str(row.l1[0].i)
     return s
 
 
 def get_singleton_table_printable_row(row):
-    return "name=%s" % row.name
+    return f"name={row.name}"
 
 
 def print_row(table, row, step, contents):
@@ -310,16 +316,12 @@ def print_idl(idl, step):
 
 def substitute_uuids(json, symtab):
     if isinstance(json, str):
-        symbol = symtab.get(json)
-        if symbol:
+        if symbol := symtab.get(json):
             return str(symbol)
     elif type(json) == list:
         return [substitute_uuids(element, symtab) for element in json]
     elif type(json) == dict:
-        d = {}
-        for key, value in json.items():
-            d[key] = substitute_uuids(value, symtab)
-        return d
+        return {key: substitute_uuids(value, symtab) for key, value in json.items()}
     return json
 
 
@@ -338,17 +340,16 @@ def parse_uuids(json, symtab):
 
 
 def idltest_find_simple(idl, i):
-    for row in idl.tables["simple"].rows.values():
-        if row.i == i:
-            return row
-    return None
+    return next(
+        (row for row in idl.tables["simple"].rows.values() if row.i == i), None
+    )
 
 
 def idltest_find_simple2(idl, i):
-    for row in idl.tables["simple2"].rows.values():
-        if row.name == i:
-            return row
-    return None
+    return next(
+        (row for row in idl.tables["simple2"].rows.values() if row.name == i),
+        None,
+    )
 
 
 def idltest_find_simple3(idl, i):
@@ -376,11 +377,8 @@ def idl_set(idl, commands, step):
             old_notify = idl.notify
 
             def notify(event, row, updates=None):
-                if updates:
-                    upcol = list(updates._data.keys())[0]
-                else:
-                    upcol = None
-                events.append("%s|%s|%s" % (event, row.i, upcol))
+                upcol = list(updates._data.keys())[0] if updates else None
+                events.append(f"{event}|{row.i}|{upcol}")
                 idl.notify = old_notify
 
             idl.notify = notify
@@ -678,7 +676,7 @@ def do_idl(schema_file, remote, *commands):
 
     def mock_notify(event, row, updates=None):
         output = "%03d: " % step
-        output += "event:" + str(event) + ", row={"
+        output += f"event:{str(event)}" + ", row={"
         output += get_simple_table_printable_row(row, 'l2', 'l1') + "}, "
         output += get_simple_printable_row_string(row, ["uuid"]) + ", updates="
         if updates is None:
@@ -694,7 +692,7 @@ def do_idl(schema_file, remote, *commands):
         idl.notify = mock_notify
 
     commands = list(commands)
-    if len(commands) >= 1 and "condition" in commands[0]:
+    if commands and "condition" in commands[0]:
         update_condition(idl, commands.pop(0))
         sys.stdout.write("%03d: change conditions\n" % step)
         sys.stdout.flush()
@@ -865,7 +863,7 @@ def do_idl_cluster(schema_file, remote, pid, *commands):
             pids = pid.split(',')
             command = None
             try:
-                command = "kill %s" % pids[i]
+                command = f"kill {pids[i]}"
             except ValueError as error:
                 sys.stderr.write("Cannot find pid of remote: %s\n"
                                  % os.strerror(error))

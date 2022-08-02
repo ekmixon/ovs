@@ -35,7 +35,7 @@ def parse_include_dirs():
 
 def find_file(include_dirs, name):
     for dir in include_dirs:
-        file = "%s/%s" % (dir, name)
+        file = f"{dir}/{name}"
         try:
             os.stat(file)
             return file
@@ -49,8 +49,4 @@ so_re = re.compile(r'^\.so (\S+)$')
 
 
 def extract_include_directive(line):
-    m = so_re.match(line)
-    if m:
-        return m.group(1)
-    else:
-        return None
+    return m.group(1) if (m := so_re.match(line)) else None

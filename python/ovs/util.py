@@ -34,17 +34,13 @@ def abs_file_name(dir_, file_name):
     On Windows an absolute path contains ':' ( i.e: C:\\ ) """
     if file_name.startswith('/') or file_name.find(':') > -1:
         return file_name
-    else:
-        if dir_ is None or dir_ == "":
-            try:
-                dir_ = os.getcwd()
-            except OSError:
-                return None
+    if dir_ is None or dir_ == "":
+        try:
+            dir_ = os.getcwd()
+        except OSError:
+            return None
 
-        if dir_.endswith('/'):
-            return dir_ + file_name
-        else:
-            return "%s/%s" % (dir_, file_name)
+    return dir_ + file_name if dir_.endswith('/') else f"{dir_}/{file_name}"
 
 
 def ovs_retval_to_string(retval):
@@ -62,7 +58,7 @@ def ovs_retval_to_string(retval):
         return os.strerror(retval)
     if retval == EOF:
         return "End of file"
-    return "***unknown return value: %s***" % retval
+    return f"***unknown return value: {retval}***"
 
 
 def ovs_error(err_no, message, vlog=None):
@@ -73,9 +69,9 @@ def ovs_error(err_no, message, vlog=None):
     'message' should not end with a new-line, because this function will add
     one itself."""
 
-    err_msg = "%s: %s" % (PROGRAM_NAME, message)
+    err_msg = f"{PROGRAM_NAME}: {message}"
     if err_no:
-        err_msg += " (%s)" % ovs_retval_to_string(err_no)
+        err_msg += f" ({ovs_retval_to_string(err_no)})"
 
     sys.stderr.write("%s\n" % err_msg)
     if vlog:

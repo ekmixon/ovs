@@ -71,7 +71,7 @@ def make_pidfile_name(name):
     """Returns the file name that would be used for a pidfile if 'name' were
     provided to set_pidfile()."""
     if name is None or name == "":
-        return "%s/%s.pid" % (ovs.dirs.RUNDIR, ovs.util.PROGRAM_NAME)
+        return f"{ovs.dirs.RUNDIR}/{ovs.util.PROGRAM_NAME}.pid"
     else:
         return ovs.util.abs_file_name(ovs.dirs.RUNDIR, name)
 
@@ -148,7 +148,7 @@ def _make_pidfile():
         tmpfile = "%s.tmp%d" % (_pidfile, pid)
         ovs.fatal_signal.add_file_to_unlink(tmpfile)
     else:
-        tmpfile = "%s" % _pidfile
+        tmpfile = f"{_pidfile}"
 
     try:
         # This is global to keep Python from garbage-collecting and
@@ -158,18 +158,18 @@ def _make_pidfile():
 
         file_handle = open(tmpfile, "w")
     except IOError as e:
-        _fatal("%s: create failed (%s)" % (tmpfile, e.strerror))
+        _fatal(f"{tmpfile}: create failed ({e.strerror})")
 
     try:
         s = os.fstat(file_handle.fileno())
     except IOError as e:
-        _fatal("%s: fstat failed (%s)" % (tmpfile, e.strerror))
+        _fatal(f"{tmpfile}: fstat failed ({e.strerror})")
 
     try:
         file_handle.write("%s\n" % pid)
         file_handle.flush()
     except OSError as e:
-        _fatal("%s: write failed: %s" % (tmpfile, e.strerror))
+        _fatal(f"{tmpfile}: write failed: {e.strerror}")
 
     try:
         if sys.platform != 'win32':
@@ -177,7 +177,7 @@ def _make_pidfile():
         else:
             fcntl.lockf(file_handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
     except IOError as e:
-        _fatal("%s: fcntl failed: %s" % (tmpfile, e.strerror))
+        _fatal(f"{tmpfile}: fcntl failed: {e.strerror}")
 
     if sys.platform == 'win32':
         # Ensure that the pidfile will gets closed and deleted on exit.
@@ -210,10 +210,8 @@ def _make_pidfile():
 
         # Delete the temporary pidfile if it still exists.
         if not _overwrite_pidfile:
-            error = ovs.fatal_signal.unlink_file_now(tmpfile)
-            if error:
-                _fatal("%s: unlink failed (%s)" % (
-                    tmpfile, os.strerror(error)))
+            if error := ovs.fatal_signal.unlink_file_now(tmpfile):
+                _fatal(f"{tmpfile}: unlink failed ({os.strerror(error)})")
 
     global _pidfile_dev
     global _pidfile_ino
@@ -233,8 +231,6 @@ def _waitpid(pid, options):
         try:
             return os.waitpid(pid, options)
         except OSError as e:
-            if e.errno == errno.EINTR:
-                pass
             return -e.errno, 0
 
 
@@ -383,10 +379,7 @@ def _should_restart(status):
         # 16-bit number 'status'.
         exit_status = status >> 8
 
-        if exit_status == RESTART_EXIT_CODE:
-            return True
-        return False
-
+        return exit_status == RESTART_EXIT_CODE
     if os.WIFEXITED(status) and os.WEXITSTATUS(status) == RESTART_EXIT_CODE:
         return True
 
@@ -424,9 +417,9 @@ def _monitor_daemon(daemon_pid):
                     ovs.timeval.msec() < last_restart + 10000):
                     vlog.warn("%s, waiting until 10 seconds since last "
                               "restart" % status_msg)
+                    wakeup = last_restart + 10000
                     while True:
                         now = ovs.timeval.msec()
-                        wakeup = last_restart + 10000
                         if now > wakeup:
                             break
                         sys.stdout.write("sleep %f\n" % (
@@ -434,12 +427,12 @@ def _monitor_daemon(daemon_pid):
                         time.sleep((wakeup - now) / 1000.0)
                 last_restart = ovs.timeval.msec()
 
-                vlog.err("%s, restarting" % status_msg)
+                vlog.err(f"{status_msg}, restarting")
                 daemon_pid = _fork_and_wait_for_startup()
                 if not daemon_pid:
                     break
             else:
-                vlog.info("%s, exiting" % status_msg)
+                vlog.info(f"{status_msg}, exiting")
                 sys.exit(0)
 
     # Running in new daemon process.
@@ -526,7 +519,7 @@ def __read_pidfile(pidfile, delete_if_stale):
     except IOError as e:
         if e.errno == errno.ENOENT and delete_if_stale:
             return 0
-        vlog.warn("%s: open: %s" % (pidfile, e.strerror))
+        vlog.warn(f"{pidfile}: open: {e.strerror}")
         return -e.errno
 
     # Python fcntl doesn't directly support F_GETLK so we have to just try
@@ -537,7 +530,7 @@ def __read_pidfile(pidfile, delete_if_stale):
         # pidfile exists but wasn't locked by anyone.  Now we have the lock.
         if not delete_if_stale:
             file_handle.close()
-            vlog.warn("%s: pid file is stale" % pidfile)
+            vlog.warn(f"{pidfile}: pid file is stale")
             return -errno.ESRCH
 
         # Is the file we have locked still named 'pidfile'?
@@ -550,23 +543,22 @@ def __read_pidfile(pidfile, delete_if_stale):
         except IOError:
             raced = True
         if raced:
-            vlog.warn("%s: lost race to delete pidfile" % pidfile)
+            vlog.warn(f"{pidfile}: lost race to delete pidfile")
             return -errno.EALREADY
 
         # We won the right to delete the stale pidfile.
         try:
             os.unlink(pidfile)
         except IOError as e:
-            vlog.warn("%s: failed to delete stale pidfile (%s)"
-                            % (pidfile, e.strerror))
+            vlog.warn(f"{pidfile}: failed to delete stale pidfile ({e.strerror})")
             return -e.errno
         else:
-            vlog.dbg("%s: deleted stale pidfile" % pidfile)
+            vlog.dbg(f"{pidfile}: deleted stale pidfile")
             file_handle.close()
             return 0
     except IOError as e:
         if e.errno not in [errno.EACCES, errno.EAGAIN]:
-            vlog.warn("%s: fcntl: %s" % (pidfile, e.strerror))
+            vlog.warn(f"{pidfile}: fcntl: {e.strerror}")
             return -e.errno
 
     # Someone else has the pidfile locked.
@@ -574,10 +566,10 @@ def __read_pidfile(pidfile, delete_if_stale):
         try:
             error = int(file_handle.readline())
         except IOError as e:
-            vlog.warn("%s: read: %s" % (pidfile, e.strerror))
+            vlog.warn(f"{pidfile}: read: {e.strerror}")
             error = -e.errno
         except ValueError:
-            vlog.warn("%s does not contain a pid" % pidfile)
+            vlog.warn(f"{pidfile} does not contain a pid")
             error = -errno.EINVAL
 
         return error
@@ -599,8 +591,7 @@ def _check_already_running():
     if pid > 0:
         _fatal("%s: already running as pid %d, aborting" % (_pidfile, pid))
     elif pid < 0:
-        _fatal("%s: pidfile check failed (%s), aborting"
-               % (_pidfile, os.strerror(pid)))
+        _fatal(f"{_pidfile}: pidfile check failed ({os.strerror(pid)}), aborting")
 
 
 def add_args(parser):
@@ -614,10 +605,19 @@ def add_args(parser):
             help="Run in background as a daemon.")
     group.add_argument("--no-chdir", action="store_true",
             help="Do not chdir to '/'.")
-    group.add_argument("--monitor", action="store_true",
-            help="Monitor %s process." % ovs.util.PROGRAM_NAME)
-    group.add_argument("--pidfile", nargs="?", const=pidfile,
-            help="Create pidfile (default %s)." % pidfile)
+    group.add_argument(
+        "--monitor",
+        action="store_true",
+        help=f"Monitor {ovs.util.PROGRAM_NAME} process.",
+    )
+
+    group.add_argument(
+        "--pidfile",
+        nargs="?",
+        const=pidfile,
+        help=f"Create pidfile (default {pidfile}).",
+    )
+
     group.add_argument("--overwrite-pidfile", action="store_true",
             help="With --pidfile, start even if already running.")
     if sys.platform == 'win32':
@@ -632,9 +632,8 @@ def handle_args(args):
     parent ArgumentParser should have been prepared by add_args() before
     calling parse_args()."""
 
-    if sys.platform == 'win32':
-        if args.pipe_handle:
-            set_detached(args.pipe_handle)
+    if sys.platform == 'win32' and args.pipe_handle:
+        set_detached(args.pipe_handle)
 
     if args.detach:
         set_detach()

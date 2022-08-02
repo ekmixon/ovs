@@ -66,20 +66,17 @@ def returnUnchanged(x):
 class Atom(object):
     def __init__(self, type_, value=None):
         self.type = type_
-        if value is not None:
-            self.value = value
-        else:
-            self.value = type_.default_atom()
+        self.value = value if value is not None else type_.default_atom()
 
     def __eq__(self, other):
         if not isinstance(other, Atom) or self.type != other.type:
             return NotImplemented
-        return True if self.value == other.value else False
+        return self.value == other.value
 
     def __lt__(self, other):
         if not isinstance(other, Atom) or self.type != other.type:
             return NotImplemented
-        return True if self.value < other.value else False
+        return self.value < other.value
 
     def __cmp__(self, other):
         if not isinstance(other, Atom) or self.type != other.type:
@@ -117,8 +114,7 @@ class Atom(object):
     def from_json(base, json, symtab=None):
         type_ = base.type
         json = ovs.db.parser.float_to_int(json)
-        real_types = [int]
-        real_types.extend([float])
+        real_types = [int, *[float]]
         real_types = tuple(real_types)
         if ((type_ == ovs.db.types.IntegerType
                 and isinstance(json, int))
@@ -131,7 +127,7 @@ class Atom(object):
         elif type_ == ovs.db.types.UuidType:
             atom = Atom(type_, ovs.ovsuuid.from_json(json, symtab))
         else:
-            raise error.Error("expected %s" % type_.to_string(), json)
+            raise error.Error(f"expected {type_.to_string()}", json)
         atom.check_constraints(base)
         return atom
 
@@ -141,7 +137,7 @@ class Atom(object):
         if isinstance(value, base.type.python_types):
             atom = Atom(base.type, value)
         else:
-            raise error.Error("expected %s, got %s" % (base.type, type(value)))
+            raise error.Error(f"expected {base.type}, got {type(value)}")
         atom.check_constraints(base)
         return atom
 
@@ -155,8 +151,9 @@ class Atom(object):
         assert base.type == self.type
         if base.enum is not None and self not in base.enum:
             raise ConstraintViolation(
-                "%s is not one of the allowed values (%s)"
-                % (self.to_string(), base.enum.to_string()))
+                f"{self.to_string()} is not one of the allowed values ({base.enum.to_string()})"
+            )
+
         elif base.type in [ovs.db.types.IntegerType, ovs.db.types.RealType]:
             if ((base.min is None or self.value >= base.min) and
                     (base.max is None or self.value <= base.max)):
@@ -199,14 +196,11 @@ class Atom(object):
         elif self.type == ovs.db.types.RealType:
             return '.real = %.15g' % self.value
         elif self.type == ovs.db.types.BooleanType:
-            if self.value:
-                return '.boolean = true'
-            else:
-                return '.boolean = false'
+            return '.boolean = true' if self.value else '.boolean = false'
         elif self.type == ovs.db.types.StringType:
             return '.string = "%s"' % escapeCString(self.value)
         elif self.type == ovs.db.types.UuidType:
-            return '.uuid = %s' % ovs.ovsuuid.to_c_assignment(self.value)
+            return f'.uuid = {ovs.ovsuuid.to_c_assignment(self.value)}'
 
     def toEnglish(self, escapeLiteral=returnUnchanged):
         if self.type == ovs.db.types.IntegerType:
@@ -214,10 +208,7 @@ class Atom(object):
         elif self.type == ovs.db.types.RealType:
             return '%.15g' % self.value
         elif self.type == ovs.db.types.BooleanType:
-            if self.value:
-                return 'true'
-            else:
-                return 'false'
+            return 'true' if self.value else 'false'
         elif self.type == ovs.db.types.StringType:
             return escapeLiteral(self.value)
         elif self.type == ovs.db.types.UuidType:
@@ -235,10 +226,7 @@ class Atom(object):
         elif self.type == ovs.db.types.RealType:
             return '%.15g' % self.value
         elif self.type == ovs.db.types.BooleanType:
-            if self.value:
-                return 'true'
-            else:
-                return 'false'
+            return 'true' if self.value else 'false'
         elif self.type == ovs.db.types.StringType:
             if Atom.__string_needs_quotes(self.value):
                 return ovs.json.to_string(self.value)
@@ -271,14 +259,18 @@ class Datum(object):
         self.values = values
 
     def __eq__(self, other):
-        if not isinstance(other, Datum):
-            return NotImplemented
-        return True if self.values == other.values else False
+        return (
+            self.values == other.values
+            if isinstance(other, Datum)
+            else NotImplemented
+        )
 
     def __lt__(self, other):
-        if not isinstance(other, Datum):
-            return NotImplemented
-        return True if self.values < other.values else False
+        return (
+            self.values < other.values
+            if isinstance(other, Datum)
+            else NotImplemented
+        )
 
     def __cmp__(self, other):
         if not isinstance(other, Datum):
@@ -337,11 +329,7 @@ class Datum(object):
         is_map = type_.is_map()
         if (is_map or
             (isinstance(json, list) and len(json) > 0 and json[0] == "set")):
-            if is_map:
-                class_ = "map"
-            else:
-                class_ = "set"
-
+            class_ = "map" if is_map else "set"
             inner = ovs.db.parser.unwrap_json(json, class_, [list, tuple],
                                               "array")
             n = len(inner)
@@ -404,23 +392,20 @@ class Datum(object):
 
             s.append(key.to_string())
             if self.type.is_map():
-                s.append("=")
-                s.append(self.values[key].to_string())
-
+                s.extend(("=", self.values[key].to_string()))
         if tail:
             s.append(tail)
         return ''.join(s)
 
     def diff(self, datum):
-        if self.type.n_max > 1 or len(self.values) == 0:
-            for k, v in datum.values.items():
-                if k in self.values and v == self.values[k]:
-                    del self.values[k]
-                else:
-                    self.values[k] = v
-        else:
+        if self.type.n_max <= 1 and len(self.values) != 0:
             return datum
 
+        for k, v in datum.values.items():
+            if k in self.values and v == self.values[k]:
+                del self.values[k]
+            else:
+                self.values[k] = v
         return self
 
     def as_list(self):
@@ -433,14 +418,12 @@ class Datum(object):
         return dict(self.values)
 
     def as_scalar(self):
-        if len(self.values) == 1:
-            if self.type.is_map():
-                k, v = next(iter(self.values.items()))
-                return [k.value, v.value]
-            else:
-                return next(iter(self.values.keys())).value
-        else:
+        if len(self.values) != 1:
             return None
+        if not self.type.is_map():
+            return next(iter(self.values.keys())).value
+        k, v = next(iter(self.values.items()))
+        return [k.value, v.value]
 
     def to_python(self, uuid_to_row):
         """Returns this datum's value converted into a natural Python
@@ -479,10 +462,7 @@ class Datum(object):
         ovs.db.types.BaseType and translates UUIDs into row objects."""
         if self.type.is_scalar():
             value = uuid_to_row(self.as_scalar(), self.type.key)
-            if value is None:
-                return self.type.key.default()
-            else:
-                return value
+            return self.type.key.default() if value is None else value
         elif self.type.is_map():
             value = {}
             for k, v in self.values.items():
@@ -546,10 +526,7 @@ class Datum(object):
     def get(self, key, default=None):
         if not isinstance(key, Atom):
             key = Atom.new(key)
-        if key in self.values:
-            return self.values[key].value
-        else:
-            return default
+        return self.values[key].value if key in self.values else default
 
     def __str__(self):
         return self.to_string()
@@ -576,8 +553,8 @@ class Datum(object):
 
         s += ["static struct ovsdb_datum %s = {" % name]
         s += ["    .n = %d," % n]
-        s += ["    .keys = %s_keys," % name]
+        s += [f"    .keys = {name}_keys,"]
         if self.type.value:
-            s += ["    .values = %s_values," % name]
+            s += [f"    .values = {name}_values,"]
         s += ["};"]
         return s

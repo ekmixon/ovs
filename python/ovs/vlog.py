@@ -118,10 +118,7 @@ class Vlog(object):
                 tmp = self._format_field(tmp, m, subprogram)
             elif "T" in m:
                 subprogram = threading.currentThread().getName()
-                if not subprogram == "MainThread":
-                    subprogram = "({})".format(subprogram)
-                else:
-                    subprogram = ""
+                subprogram = "" if subprogram == "MainThread" else f"({subprogram})"
                 tmp = self._format_field(tmp, m, subprogram)
         return tmp.strip()
 
@@ -129,11 +126,11 @@ class Vlog(object):
         formatting = re.compile("^%(0)?([1-9])?")
         matches = formatting.match(match)
         # Do we need to apply padding?
-        if not matches.group(1) and replace != "":
+        if not matches[1] and replace != "":
             replace = replace.center(len(replace) + 2)
         # Does the field have a minimum width
-        if matches.group(2):
-            min_width = int(matches.group(2))
+        if matches[2]:
+            min_width = int(matches[2])
             if len(replace) < min_width:
                 replace = replace.center(min_width)
         return re.sub(match, replace.replace('\\', r'\\'), tmp)
@@ -146,16 +143,16 @@ class Vlog(object):
             return tmp
 
         # UTC date or Local TZ?
-        if match.group(2) == "d":
+        if match[2] == "d":
             now = datetime.datetime.now()
-        elif match.group(2) == "D":
+        elif match[2] == "D":
             now = datetime.datetime.utcnow()
 
         # Custom format or ISO format?
-        if match.group(3):
-            time = datetime.date.strftime(now, match.group(4))
+        if match[3]:
+            time = datetime.date.strftime(now, match[4])
             try:
-                i = len(re.search("#+", match.group(4)).group(0))
+                i = len(re.search("#+", match[4])[0])
                 msec = '{0:0>{i}.{i}}'.format(str(now.microsecond / 1000), i=i)
                 time = re.sub('#+', msec, time)
             except AttributeError:
@@ -163,7 +160,7 @@ class Vlog(object):
         else:
             time = datetime.datetime.isoformat(now.replace(microsecond=0))
 
-        return self._format_field(tmp, match.group(1), time)
+        return self._format_field(tmp, match[1], time)
 
     def emer(self, message, **kwargs):
         self.__log("EMER", message, **kwargs)
@@ -272,11 +269,7 @@ class Vlog(object):
         if level not in LEVELS:
             return
 
-        if module == "any":
-            modules = list(Vlog.__mfl.keys())
-        else:
-            modules = [module]
-
+        modules = list(Vlog.__mfl.keys()) if module == "any" else [module]
         if destination == "any":
             destinations = list(DESTINATIONS.keys())
         else:
@@ -332,26 +325,24 @@ class Vlog(object):
         words = re.split('[ :]', s)
         if words[0] == "pattern":
             try:
-                if words[1] in DESTINATIONS and words[2]:
-                    segments = [words[i] for i in range(2, len(words))]
-                    pattern = "".join(segments)
-                    Vlog.set_pattern(words[1], pattern)
-                    return
-                else:
-                    return "Destination %s does not exist" % words[1]
+                if words[1] not in DESTINATIONS or not words[2]:
+                    return f"Destination {words[1]} does not exist"
+                segments = [words[i] for i in range(2, len(words))]
+                pattern = "".join(segments)
+                Vlog.set_pattern(words[1], pattern)
+                return
             except IndexError:
                 return "Please supply a valid pattern and destination"
         elif words[0] == "FACILITY":
-            if words[1] in FACILITIES:
-                try:
-                    Vlog.add_syslog_handler(words[1])
-                except (IOError, socket.error):
-                    logger = logging.getLogger('syslog')
-                    logger.disabled = True
-                return
-            else:
-                return "Facility %s is invalid" % words[1]
+            if words[1] not in FACILITIES:
+                return f"Facility {words[1]} is invalid"
 
+            try:
+                Vlog.add_syslog_handler(words[1])
+            except (IOError, socket.error):
+                logger = logging.getLogger('syslog')
+                logger.disabled = True
+            return
         for word in [w.lower() for w in words]:
             if word == "any":
                 pass
@@ -426,8 +417,7 @@ class Vlog(object):
     @staticmethod
     def _unixctl_vlog_set(conn, argv, unused_aux):
         for arg in argv:
-            msg = Vlog.set_levels_from_string(arg)
-            if msg:
+            if msg := Vlog.set_levels_from_string(arg):
                 conn.reply(msg)
                 return
         conn.reply(None)
@@ -457,7 +447,7 @@ def handle_args(args):
 
     log_file = args.log_file
     if log_file == "default":
-        log_file = "%s/%s.log" % (ovs.dirs.LOGDIR, ovs.util.PROGRAM_NAME)
+        log_file = f"{ovs.dirs.LOGDIR}/{ovs.util.PROGRAM_NAME}.log"
 
     if args.verbose is None:
         args.verbose = []
@@ -465,8 +455,7 @@ def handle_args(args):
         args.verbose = ["any:any:dbg"]
 
     for verbose in args.verbose:
-        msg = Vlog.set_levels_from_string(verbose)
-        if msg:
+        if msg := Vlog.set_levels_from_string(verbose):
             ovs.util.ovs_fatal(0, "processing \"%s\": %s" % (verbose, msg))
 
     Vlog.init(log_file)

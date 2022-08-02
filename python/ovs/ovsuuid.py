@@ -32,7 +32,7 @@ def is_valid_string(s):
 
 def from_string(s):
     if not is_valid_string(s):
-        raise error.Error("%s is not a valid UUID" % s)
+        raise error.Error(f"{s} is not a valid UUID")
     return uuid.UUID(s)
 
 
@@ -62,6 +62,5 @@ def to_json(uuid_):
 
 def to_c_initializer(uuid_, var):
     hex_string = uuid_.hex
-    parts = ["0x%s" % (hex_string[x * 8:(x + 1) * 8])
-            for x in range(4)]
+    parts = [f"0x{hex_string[x * 8:(x + 1) * 8]}" for x in range(4)]
     return "{ %s }," % ", ".join(parts)

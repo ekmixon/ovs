@@ -75,7 +75,7 @@ def from_string(s):
         except UnicodeDecodeError as e:
             seq = ' '.join(["0x%2x" % ord(c)
                            for c in e.object[e.start:e.end] if ord(c) >= 0x80])
-            return "not a valid UTF-8 string: invalid UTF-8 sequence %s" % seq
+            return f"not a valid UTF-8 string: invalid UTF-8 sequence {seq}"
     p = Parser(check_trailer=True)
     p.feed(s)
     return p.finish()
@@ -175,8 +175,7 @@ class Parser(object):
 
     def __lex_finish_number(self):
         s = self.buffer
-        m = Parser.__number_re.match(s)
-        if m:
+        if m := Parser.__number_re.match(s):
             sign, integer, fraction, exp = m.groups()
             if (exp is not None and
                 (int(exp) > sys.maxsize or int(exp) < -sys.maxsize - 1)):
@@ -217,7 +216,7 @@ class Parser(object):
                     return
 
             value = float(s)
-            if value == float("inf") or value == float("-inf"):
+            if value in [float("inf"), float("-inf")]:
                 self.__error("number outside valid range")
                 return
             if value == 0:
@@ -458,8 +457,7 @@ class Parser(object):
                 self.parse_state = Parser.__parse_object_next
 
     def __parse_value(self, token, string, next_state):
-        number_types = [int]
-        number_types.extend([float])
+        number_types = [int, *[float]]
         number_types = tuple(number_types)
         if token in [False, None, True] or isinstance(token, number_types):
             self.__put_value(token)
@@ -516,8 +514,7 @@ class Parser(object):
         elif self.parse_state != Parser.__parse_end:
             self.__error("unexpected end of input")
 
-        if self.error is None:
-            assert len(self.stack) == 1
-            return self.stack.pop()
-        else:
+        if self.error is not None:
             return self.error
+        assert len(self.stack) == 1
+        return self.stack.pop()

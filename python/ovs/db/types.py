@@ -55,8 +55,7 @@ class AtomicType(object):
         return ovs.db.data.Atom(self, self.default)
 
 
-REAL_PYTHON_TYPES = [int]
-REAL_PYTHON_TYPES.extend([float])
+REAL_PYTHON_TYPES = [int, *[float]]
 REAL_PYTHON_TYPES = tuple(REAL_PYTHON_TYPES)
 
 VoidType = AtomicType("void", None, ())
@@ -105,11 +104,11 @@ def commafy(x):
 
 def _commafy(s):
     if s.startswith('-'):
-        return '-' + _commafy(s[1:])
+        return f'-{_commafy(s[1:])}'
     elif len(s) <= 3:
         return s
     else:
-        return _commafy(s[:-3]) + ',' + _commafy(s[-3:])
+        return f'{_commafy(s[:-3])},{_commafy(s[-3:])}'
 
 
 def returnUnchanged(x):
@@ -127,29 +126,29 @@ class BaseType(object):
         self.min_length = min_length
         self.max_length = max_length
         self.ref_table_name = ref_table_name
-        if ref_table_name:
-            self.ref_type = 'strong'
-        else:
-            self.ref_type = None
+        self.ref_type = 'strong' if ref_table_name else None
         self.ref_table = None
 
     def default(self):
         return ovs.db.data.Atom.default(self.type)
 
     def __eq__(self, other):
-        if not isinstance(other, BaseType):
-            return NotImplemented
-        return (self.type == other.type and self.enum == other.enum and
-                self.min == other.min and self.max == other.max and
-                self.min_length == other.min_length and
-                self.max_length == other.max_length and
-                self.ref_table_name == other.ref_table_name)
+        return (
+            (
+                self.type == other.type
+                and self.enum == other.enum
+                and self.min == other.min
+                and self.max == other.max
+                and self.min_length == other.min_length
+                and self.max_length == other.max_length
+                and self.ref_table_name == other.ref_table_name
+            )
+            if isinstance(other, BaseType)
+            else NotImplemented
+        )
 
     def __ne__(self, other):
-        if not isinstance(other, BaseType):
-            return NotImplemented
-        else:
-            return not (self == other)
+        return not (self == other) if isinstance(other, BaseType) else NotImplemented
 
     @staticmethod
     def __parse_uint(parser, name, default):
@@ -280,13 +279,12 @@ class BaseType(object):
         return self.is_ref() and self.ref_type == 'weak'
 
     def toEnglish(self, escapeLiteral=returnUnchanged):
-        if self.type == UuidType and self.ref_table_name:
-            s = escapeLiteral(self.ref_table_name)
-            if self.ref_type == 'weak':
-                s = "weak reference to " + s
-            return s
-        else:
+        if self.type != UuidType or not self.ref_table_name:
             return self.type.to_string()
+        s = escapeLiteral(self.ref_table_name)
+        if self.ref_type == 'weak':
+            s = f"weak reference to {s}"
+        return s
 
     def constraintsToEnglish(self, escapeLiteral=returnUnchanged,
                              escapeNumber=returnUnchanged):
@@ -295,40 +293,35 @@ class BaseType(object):
                         for value in self.enum.values]
             literals.sort()
             if len(literals) == 1:
-                english = 'must be %s' % (literals[0])
+                english = f'must be {literals[0]}'
             elif len(literals) == 2:
-                english = 'either %s or %s' % (literals[0], literals[1])
+                english = f'either {literals[0]} or {literals[1]}'
             else:
-                english = 'one of %s, %s, or %s' % (literals[0],
-                                                    ', '.join(literals[1:-1]),
-                                                    literals[-1])
+                english = f"one of {literals[0]}, {', '.join(literals[1:-1])}, or {literals[-1]}"
+
         elif self.min is not None and self.max is not None:
             if self.type == IntegerType:
-                english = 'in range %s to %s' % (
-                    escapeNumber(commafy(self.min)),
-                    escapeNumber(commafy(self.max)))
+                english = f'in range {escapeNumber(commafy(self.min))} to {escapeNumber(commafy(self.max))}'
+
             else:
-                english = 'in range %s to %s' % (
-                    escapeNumber("%g" % self.min),
-                    escapeNumber("%g" % self.max))
+                english = f'in range {escapeNumber("%g" % self.min)} to {escapeNumber("%g" % self.max)}'
+
         elif self.min is not None:
             if self.type == IntegerType:
-                english = 'at least %s' % escapeNumber(commafy(self.min))
+                english = f'at least {escapeNumber(commafy(self.min))}'
             else:
-                english = 'at least %s' % escapeNumber("%g" % self.min)
+                english = f'at least {escapeNumber("%g" % self.min)}'
         elif self.max is not None:
             if self.type == IntegerType:
-                english = 'at most %s' % escapeNumber(commafy(self.max))
+                english = f'at most {escapeNumber(commafy(self.max))}'
             else:
-                english = 'at most %s' % escapeNumber("%g" % self.max)
+                english = f'at most {escapeNumber("%g" % self.max)}'
         elif self.min_length != 0 and self.max_length != sys.maxsize:
             if self.min_length == self.max_length:
-                english = ('exactly %s characters long'
-                           % commafy(self.min_length))
+                english = f'exactly {commafy(self.min_length)} characters long'
             else:
-                english = ('between %s and %s characters long'
-                        % (commafy(self.min_length),
-                           commafy(self.max_length)))
+                english = f'between {commafy(self.min_length)} and {commafy(self.max_length)} characters long'
+
         elif self.min_length != 0:
             return 'at least %s characters long' % commafy(self.min_length)
         elif self.max_length != sys.maxsize:
@@ -343,7 +336,7 @@ class BaseType(object):
             if not refTable:
                 assert self.type == UuidType
                 return 'struct uuid *'
-            return "struct %s%s *" % (prefix, self.ref_table_name.lower())
+            return f"struct {prefix}{self.ref_table_name.lower()} *"
         else:
             return {IntegerType: 'int64_t ',
                     RealType: 'double ',
@@ -358,20 +351,20 @@ class BaseType(object):
         # weird to write "const bool" as, e.g., a function parameter since
         # there's no real "const"ness there.  So, omit the "const" except
         # when a pointer is involved.
-        if '*' in nonconst:
-            return 'const ' + nonconst
-        else:
-            return nonconst
+        return f'const {nonconst}' if '*' in nonconst else nonconst
 
     def toAtomicType(self):
-        return "OVSDB_TYPE_%s" % self.type.to_string().upper()
+        return f"OVSDB_TYPE_{self.type.to_string().upper()}"
 
     def copyCValue(self, dst, src, refTable=True):
         args = {'dst': dst, 'src': src}
         if self.ref_table_name:
-            if not refTable:
-                return "%(dst)s = *%(src)s;" % args
-            return ("%(dst)s = %(src)s->header_.uuid;") % args
+            return (
+                ("%(dst)s = %(src)s->header_.uuid;") % args
+                if refTable
+                else "%(dst)s = *%(src)s;" % args
+            )
+
         elif self.type == StringType:
             return "%(dst)s = xstrdup(%(src)s);" % args
         else:
@@ -380,9 +373,12 @@ class BaseType(object):
     def assign_c_value_casting_away_const(self, dst, src, refTable=True):
         args = {'dst': dst, 'src': src}
         if self.ref_table_name:
-            if not refTable:
-                return "%(dst)s = *%(src)s;" % args
-            return ("%(dst)s = %(src)s->header_.uuid;") % args
+            return (
+                ("%(dst)s = %(src)s->header_.uuid;") % args
+                if refTable
+                else "%(dst)s = *%(src)s;" % args
+            )
+
         elif self.type == StringType:
             return "%(dst)s = CONST_CAST(char *, %(src)s);" % args
         else:
@@ -390,7 +386,7 @@ class BaseType(object):
 
     def initCDefault(self, var, is_optional):
         if self.ref_table_name:
-            return "%s = NULL;" % var
+            return f"{var} = NULL;"
         elif self.type == StringType and not is_optional:
             return '%s = "";' % var
         else:
@@ -402,40 +398,22 @@ class BaseType(object):
             return pattern % var
 
     def cInitBaseType(self, prefix, prereqs):
-        init = [".type = %s," % self.toAtomicType()]
+        init = [f".type = {self.toAtomicType()},"]
         if self.enum:
-            datum_name = "%s_enum" % prefix
-            init += [".enum_ = &%s," % datum_name]
+            datum_name = f"{prefix}_enum"
+            init += [f".enum_ = &{datum_name},"]
             prereqs += self.enum.cDeclareDatum(datum_name)
         if self.type == IntegerType:
-            if self.min is None:
-                low = "INT64_MIN"
-            else:
-                low = "INT64_C(%d)" % self.min
-            if self.max is None:
-                high = "INT64_MAX"
-            else:
-                high = "INT64_C(%d)" % self.max
+            low = "INT64_MIN" if self.min is None else "INT64_C(%d)" % self.min
+            high = "INT64_MAX" if self.max is None else "INT64_C(%d)" % self.max
             init.append(".integer = { .min = %s, .max = %s }," % (low, high))
         elif self.type == RealType:
-            if self.min is None:
-                low = "-DBL_MAX"
-            else:
-                low = self.min
-            if self.max is None:
-                high = "DBL_MAX"
-            else:
-                high = self.max
+            low = "-DBL_MAX" if self.min is None else self.min
+            high = "DBL_MAX" if self.max is None else self.max
             init.append(".real = { .min = %s, .max = %s }," % (low, high))
         elif self.type == StringType:
-            if self.min is None:
-                low = 0
-            else:
-                low = self.min_length
-            if self.max is None:
-                high = "UINT_MAX"
-            else:
-                high = self.max_length
+            low = 0 if self.min is None else self.min_length
+            high = "UINT_MAX" if self.max is None else self.max_length
             init.append(".string = { .minLen = %s, .maxLen = %s }," % (
                 low, high))
         elif self.type == UuidType:
@@ -458,23 +436,23 @@ class Type(object):
         self.n_max = n_max
 
     def copy(self):
-        if self.value is None:
-            value = None
-        else:
-            value = self.value.copy()
+        value = None if self.value is None else self.value.copy()
         return Type(self.key.copy(), value, self.n_min, self.n_max)
 
     def __eq__(self, other):
-        if not isinstance(other, Type):
-            return NotImplemented
-        return (self.key == other.key and self.value == other.value and
-                self.n_min == other.n_min and self.n_max == other.n_max)
+        return (
+            (
+                self.key == other.key
+                and self.value == other.value
+                and self.n_min == other.n_min
+                and self.n_max == other.n_max
+            )
+            if isinstance(other, Type)
+            else NotImplemented
+        )
 
     def __ne__(self, other):
-        if not isinstance(other, Type):
-            return NotImplemented
-        else:
-            return not (self == other)
+        return not (self == other) if isinstance(other, Type) else NotImplemented
 
     def is_valid(self):
         return (self.key.type != VoidType and self.key.is_valid() and
@@ -521,8 +499,7 @@ class Type(object):
             return Type(BaseType.from_json(json))
 
         parser = ovs.db.parser.Parser(json, "ovsdb type")
-        _types = [str]
-        _types.extend([dict])
+        _types = [str, *[dict]]
         key_json = parser.get("key", _types)
         value_json = parser.get_optional("value", _types)
         min_json = parser.get_optional("min", [int])
@@ -532,11 +509,7 @@ class Type(object):
         parser.finish()
 
         key = BaseType.from_json(key_json)
-        if value_json:
-            value = BaseType.from_json(value_json)
-        else:
-            value = None
-
+        value = BaseType.from_json(value_json) if value_json else None
         n_min = Type.__n_from_json(min_json, Type.DEFAULT_MIN)
 
         if max_json == 'unlimited':
@@ -573,55 +546,50 @@ class Type(object):
             return keyName
         elif self.is_optional():
             if self.value:
-                return "optional %s-%s pair" % (keyName, valueName)
+                return f"optional {keyName}-{valueName} pair"
             else:
-                return "optional %s" % keyName
+                return f"optional {keyName}"
         else:
             if self.n_max == sys.maxsize:
-                if self.n_min:
-                    quantity = "%s or more " % commafy(self.n_min)
-                else:
-                    quantity = ""
+                quantity = f"{commafy(self.n_min)} or more " if self.n_min else ""
             elif self.n_min:
-                quantity = "%s to %s " % (commafy(self.n_min),
-                                          commafy(self.n_max))
+                quantity = f"{commafy(self.n_min)} to {commafy(self.n_max)} "
             else:
-                quantity = "up to %s " % commafy(self.n_max)
+                quantity = f"up to {commafy(self.n_max)} "
 
             if self.value:
-                return "map of %s%s-%s pairs" % (quantity, keyName, valueName)
-            else:
-                # Extract the last word from 'keyName' so we can make it
-                # plural.  For linguistic analysis, turn it into English
-                # without formatting so that we don't consider any prefix or
-                # suffix added by escapeLiteral.
-                plainKeyName = (self.key.toEnglish(returnUnchanged)
-                                .rpartition(' ')[2].lower())
+                return f"map of {quantity}{keyName}-{valueName} pairs"
+            # Extract the last word from 'keyName' so we can make it
+            # plural.  For linguistic analysis, turn it into English
+            # without formatting so that we don't consider any prefix or
+            # suffix added by escapeLiteral.
+            plainKeyName = (self.key.toEnglish(returnUnchanged)
+                            .rpartition(' ')[2].lower())
 
-                if plainKeyName == 'chassis':
-                    plural = keyName
-                elif plainKeyName.endswith('s'):
-                    plural = keyName + "es"
-                else:
-                    plural = keyName + "s"
-                return "set of %s%s" % (quantity, plural)
+            if plainKeyName == 'chassis':
+                plural = keyName
+            elif plainKeyName.endswith('s'):
+                plural = f"{keyName}es"
+            else:
+                plural = f"{keyName}s"
+            return f"set of {quantity}{plural}"
 
     def constraintsToEnglish(self, escapeLiteral=returnUnchanged,
                              escapeNumber=returnUnchanged):
         constraints = []
-        keyConstraints = self.key.constraintsToEnglish(escapeLiteral,
-                                                       escapeNumber)
-        if keyConstraints:
+        if keyConstraints := self.key.constraintsToEnglish(
+            escapeLiteral, escapeNumber
+        ):
             if self.value:
-                constraints.append('key %s' % keyConstraints)
+                constraints.append(f'key {keyConstraints}')
             else:
                 constraints.append(keyConstraints)
 
         if self.value:
-            valueConstraints = self.value.constraintsToEnglish(escapeLiteral,
-                                                               escapeNumber)
-            if valueConstraints:
-                constraints.append('value %s' % valueConstraints)
+            if valueConstraints := self.value.constraintsToEnglish(
+                escapeLiteral, escapeNumber
+            ):
+                constraints.append(f'value {valueConstraints}')
 
         return ', '.join(constraints)
 
@@ -633,21 +601,19 @@ class Type(object):
 
     def cInitType(self, prefix, prereqs):
         init = [".key = {"]
-        init += ["   " + x for x in self.key.cInitBaseType(prefix + "_key",
-                                                           prereqs)]
+        init += [f"   {x}" for x in self.key.cInitBaseType(f"{prefix}_key", prereqs)]
         init += ["},"]
         if self.value:
             init += [".value = {"]
-            init += ["    " + x
-                     for x in self.value.cInitBaseType(prefix + "_value",
-                                                       prereqs)]
+            init += [
+                f"    {x}"
+                for x in self.value.cInitBaseType(f"{prefix}_value", prereqs)
+            ]
+
             init += ["},"]
         else:
             init.append(".value = OVSDB_BASE_VOID_INIT,")
-        init.append(".n_min = %s," % self.n_min)
-        if self.n_max == sys.maxsize:
-            n_max = "UINT_MAX"
-        else:
-            n_max = self.n_max
-        init.append(".n_max = %s," % n_max)
+        init.append(f".n_min = {self.n_min},")
+        n_max = "UINT_MAX" if self.n_max == sys.maxsize else self.n_max
+        init.append(f".n_max = {n_max},")
         return init

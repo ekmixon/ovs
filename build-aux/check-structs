@@ -8,20 +8,21 @@ macros = {}
 
 anyWarnings = False
 
-types = {}
-types['char'] = {"size": 1, "alignment": 1}
-types['uint8_t'] = {"size": 1, "alignment": 1}
-types['ovs_be16'] = {"size": 2, "alignment": 2}
-types['ovs_be32'] = {"size": 4, "alignment": 4}
-types['ovs_be64'] = {"size": 8, "alignment": 8}
-types['ovs_32aligned_be64'] = {"size": 8, "alignment": 4}
-types['struct eth_addr'] = {"size": 6, "alignment": 2}
-types['struct eth_addr64'] = {"size": 8, "alignment": 2}
+types = {
+    'char': {"size": 1, "alignment": 1},
+    'uint8_t': {"size": 1, "alignment": 1},
+    'ovs_be16': {"size": 2, "alignment": 2},
+    'ovs_be32': {"size": 4, "alignment": 4},
+    'ovs_be64': {"size": 8, "alignment": 8},
+    'ovs_32aligned_be64': {"size": 8, "alignment": 4},
+    'struct eth_addr': {"size": 6, "alignment": 2},
+    'struct eth_addr64': {"size": 8, "alignment": 2},
+}
 
 token = None
 line = ""
 idRe = "[a-zA-Z_][a-zA-Z_0-9]*"
-tokenRe = "#?" + idRe + "|[0-9]+|."
+tokenRe = f"#?{idRe}|[0-9]+|."
 includeRe = re.compile(r'\s*#include\s+<(openflow/[^#]+)>')
 includePath = ''
 inComment = False
@@ -49,7 +50,7 @@ def getToken():
                     line = line[commentEnd + 2:]
             else:
                 match = re.match(tokenRe, line)
-                token = match.group(0)
+                token = match[0]
                 line = line[len(token):]
                 if token.startswith('#'):
                     inDirective = True
@@ -69,8 +70,7 @@ def getToken():
                 while line.endswith("\\\n"):
                     line = line[:-2] + inputFile.readline()
                     lineNumber += 1
-                match = includeRe.match(line)
-                if match:
+                if match := includeRe.match(line):
                     inputStack.append((fileName, inputFile, lineNumber))
                     inputFile = open(includePath + match.group(1))
                     lineNumber = 0
@@ -79,7 +79,7 @@ def getToken():
                     if inputStack:
                         fileName, inputFile, lineNumber = inputStack.pop()
                         continue
-                    if token == None:
+                    if token is None:
                         fatal("unexpected end of input")
                     token = None
                     return False
@@ -100,7 +100,7 @@ def skipDirective():
         getToken()
 
 def isId(s):
-    return re.match(idRe + "$", s) != None
+    return re.match(f"{idRe}$", s) != None
 
 def forceId():
     if not isId(token):
@@ -111,22 +111,21 @@ def forceInteger():
         fatal("integer expected")
 
 def match(t):
-    if token == t:
-        getToken()
-        return True
-    else:
+    if token != t:
         return False
+    getToken()
+    return True
 
 def forceMatch(t):
     if not match(t):
-        fatal("%s expected" % t)
+        fatal(f"{t} expected")
 
 def parseTaggedName():
     assert token in ('struct', 'union')
     name = token
     getToken()
     forceId()
-    name = "%s %s" % (name, token)
+    name = f"{name} {token}"
     getToken()
     return name
 
@@ -183,22 +182,20 @@ def parseStruct():
                 ofs += shortage
             size += nBytes
             ofs += nBytes
-        else:
-            if nBytes > size:
-                size = nBytes
+        elif nBytes > size:
+            size = nBytes
         if typeAlignment > alignment:
             alignment = typeAlignment
 
         forceMatch(';')
     if size % alignment:
         shortage = alignment - (size % alignment)
-        if (structName == "struct ofp10_packet_in" and
-            shortage == 2 and
-            memberName == 'data' and
-            count == 0):
-            # This is intentional
-            pass
-        else:
+        if (
+            structName != "struct ofp10_packet_in"
+            or shortage != 2
+            or memberName != 'data'
+            or count != 0
+        ):
             warn("%s needs %d bytes of tail padding" % (structName, shortage))
         size += shortage
     types[structName] = {"size": size, "alignment": alignment}
@@ -240,51 +237,49 @@ files.  It will not work on arbitrary header files without extensions.\
             continue
         global inputFile
         global lineNumber
-        inputFile = open(fileName)
-        lineNumber = 0
-        lastStruct = None
-        while getToken():
-            if token in ("#ifdef", "#ifndef", "#include",
+        with open(fileName) as inputFile:
+            lineNumber = 0
+            lastStruct = None
+            while getToken():
+                if token in ("#ifdef", "#ifndef", "#include",
                          "#endif", "#elif", "#else"):
-                skipDirective()
-            elif token == "#define":
-                getToken()
-                name = token
-                if line.startswith('('):
                     skipDirective()
-                else:
-                    definition = ""
+                elif token == "#define":
                     getToken()
-                    while token != '$':
-                        definition += token
+                    name = token
+                    if line.startswith('('):
+                        skipDirective()
+                    else:
+                        definition = ""
                         getToken()
-                    macros[name] = definition
-            elif token == "enum":
-                while token != ';':
+                        while token != '$':
+                            definition += token
+                            getToken()
+                        macros[name] = definition
+                elif token == "enum":
+                    while token != ';':
+                        getToken()
+                elif token in ('struct', 'union'):
+                    lastStruct = parseStruct()
+                elif match('OFP_ASSERT') or match('BOOST_STATIC_ASSERT'):
+                    forceMatch('(')
+                    forceMatch('sizeof')
+                    forceMatch('(')
+                    typeName = parseTypeName()
+                    if typeName != lastStruct:
+                        warn(f"checking size of {typeName} but {lastStruct} was most recently defined")
+                    forceMatch(')')
+                    forceMatch('=')
+                    forceMatch('=')
+                    forceInteger()
+                    size = int(token)
                     getToken()
-            elif token in ('struct', 'union'):
-                lastStruct = parseStruct()
-            elif match('OFP_ASSERT') or match('BOOST_STATIC_ASSERT'):
-                forceMatch('(')
-                forceMatch('sizeof')
-                forceMatch('(')
-                typeName = parseTypeName()
-                if typeName != lastStruct:
-                    warn("checking size of %s but %s was most recently defined"
-                         % (typeName, lastStruct))
-                forceMatch(')')
-                forceMatch('=')
-                forceMatch('=')
-                forceInteger()
-                size = int(token)
-                getToken()
-                forceMatch(')')
-                if types[typeName]['size'] != size:
-                    warn("%s is %d bytes long but declared as %d" % (
-                            typeName, types[typeName]['size'], size))
-            else:
-                fatal("parse error")
-        inputFile.close()
+                    forceMatch(')')
+                    if types[typeName]['size'] != size:
+                        warn("%s is %d bytes long but declared as %d" % (
+                                typeName, types[typeName]['size'], size))
+                else:
+                    fatal("parse error")
     if anyWarnings:
         sys.exit(1)
 

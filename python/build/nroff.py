@@ -35,11 +35,7 @@ def text_to_nroff(s, font=r'\fR', escape_dot=True):
         if c.startswith('-'):
             if c == '--' and font == r'\fR':
                 return r'\-'
-            if c != '-' or font in (r'\fB', r'\fL'):
-                return c.replace('-', r'\-')
-            else:
-                return '-'
-
+            return c.replace('-', r'\-') if c != '-' or font in (r'\fB', r'\fL') else '-'
         if c == '\\':
             return r'\e'
         elif c == '"':
@@ -47,13 +43,7 @@ def text_to_nroff(s, font=r'\fR', escape_dot=True):
         elif c == "'":
             return r'\(cq'
         elif c == ".":
-            if escape_dot:
-                # groff(7) says that . can be escaped by \. but in practice
-                # groff still gives an error with \. at the beginning of a
-                # line.
-                return r'\[char46]'
-            else:
-                return '.'
+            return r'\[char46]' if escape_dot else '.'
         else:
             raise error.Error("bad escape")
 
@@ -114,12 +104,11 @@ def inline_xml_to_nroff(node, font, to_upper=False, newline='\n'):
                                     escape_dot=False)
                     + '"\n')
         else:
-            raise error.Error("element <%s> unknown or invalid here"
-                              % node.tagName)
+            raise error.Error(f"element <{node.tagName}> unknown or invalid here")
     elif node.nodeType == node.COMMENT_NODE:
         return ''
     else:
-        raise error.Error("unknown node %s in inline xml" % node)
+        raise error.Error(f"unknown node {node} in inline xml")
 
 
 def pre_to_nroff(nodes, para, font):
@@ -181,10 +170,8 @@ def diagram_header_to_nroff(header_node, text, x):
             i += 1
         elif node.nodeType == node.COMMENT_NODE:
             pass
-        elif node.nodeType == node.TEXT_NODE and node.data.isspace():
-            pass
-        else:
-            fatal("unknown node %s in diagram <header> element" % node)
+        elif node.nodeType != node.TEXT_NODE or not node.data.isspace():
+            fatal(f"unknown node {node} in diagram <header> element")
 
     # Format pic version.
     pic_s = ""
@@ -198,12 +185,9 @@ def diagram_header_to_nroff(header_node, text, x):
         pic_s += "  \"%s\" at %s.n above\n" % (f['above'], f['tag'])
         pic_s += "  \"%s\" at %s.s below\n" % (f['below'], f['tag'])
     name = header_node.getAttribute('name')
-    if name == "":
-        visible = " invis"
-    else:
-        visible = ""
+    visible = " invis" if name == "" else ""
     pic_s += "line <->%s \"%s\" above " % (visible, name)
-    pic_s += "from %s.nw + (0,textht) " % header_fields[0]['tag']
+    pic_s += f"from {header_fields[0]['tag']}.nw + (0,textht) "
     pic_s += "to %s.ne + (0,textht)\n" % header_fields[-1]['tag']
 
     # Format text version.
@@ -266,10 +250,8 @@ def diagram_to_nroff(nodes, para):
             x += 5
         elif node.nodeType == node.COMMENT_NODE:
             pass
-        elif node.nodeType == node.TEXT_NODE and node.data.isspace():
-            pass
-        else:
-            fatal("unknown node %s in diagram <header> element" % node)
+        elif node.nodeType != node.TEXT_NODE or not node.data.isspace():
+            fatal(f"unknown node {node} in diagram <header> element")
 
     text_s = '.br\n'.join(["\\fL%s\n" % s for s in text if s != ""])
     return para + """
@@ -280,11 +262,13 @@ boxht = .2
 textht = 1/6
 fillval = .2
 """ + pic_s + """\
+""" + pic_s + """\
 .PE
 \\}
 .\\" check if in nroff mode:
 .if n \\{
 .nf
+""" + text_s + """\
 """ + text_s + """\
 .fi
 \\}"""
@@ -300,6 +284,8 @@ def block_xml_to_nroff(nodes, para='.PP'):
     s = ''
     prev = ''
     for node in nodes:
+        if node.nodeType == node.COMMENT_NODE:
+            continue
         if node.nodeType == node.TEXT_NODE:
             if s == '' and para != '.IP':
                 s = para + '\n'
@@ -318,10 +304,7 @@ def block_xml_to_nroff(nodes, para='.PP'):
                     if (li_node.nodeType == node.ELEMENT_NODE
                         and li_node.tagName == 'li'):
                         i += 1
-                        if node.tagName == 'ul':
-                            s += ".IP \\(bu\n"
-                        else:
-                            s += ".IP %d. .4in\n" % i
+                        s += ".IP \\(bu\n" if node.tagName == 'ul' else ".IP %d. .4in\n" % i
                         s += block_xml_to_nroff(li_node.childNodes, ".IP")
                     elif li_node.nodeType == node.COMMENT_NODE:
                         pass
@@ -342,10 +325,7 @@ def block_xml_to_nroff(nodes, para='.PP'):
                 for li_node in node.childNodes:
                     if (li_node.nodeType == node.ELEMENT_NODE
                         and li_node.tagName == 'dt'):
-                        if prev == 'dd':
-                            s += '.TP\n'
-                        else:
-                            s += '.TQ .5in\n'
+                        s += '.TP\n' if prev == 'dd' else '.TQ .5in\n'
                         prev = 'dt'
                     elif (li_node.nodeType == node.ELEMENT_NODE
                           and li_node.tagName == 'dd'):
@@ -368,9 +348,8 @@ def block_xml_to_nroff(nodes, para='.PP'):
                     s += para + "\n"
                 s += block_xml_to_nroff(node.childNodes, para)
             elif node.tagName in HEADER_TAGS:
-                if s != "":
-                    if not s.endswith("\n"):
-                        s += "\n"
+                if s != "" and not s.endswith("\n"):
+                    s += "\n"
                 nroffTag, font = {'h1': ('SH', r'\fR'),
                                   'h2': ('SS', r'\fB'),
                                   'h3': ('ST', r'\fI'),
@@ -383,10 +362,7 @@ def block_xml_to_nroff(nodes, para='.PP'):
                 s += "\"\n"
             elif node.tagName == 'pre':
                 fixed = node.getAttribute('fixed')
-                if fixed == 'yes':
-                    font = r'\fL'
-                else:
-                    font = r'\fB'
+                font = r'\fL' if fixed == 'yes' else r'\fB'
                 s += pre_to_nroff(node.childNodes, para, font)
             elif node.tagName == 'tbl':
                 s += tbl_to_nroff(node.childNodes, para)
@@ -395,10 +371,8 @@ def block_xml_to_nroff(nodes, para='.PP'):
             else:
                 s += inline_xml_to_nroff(node, r'\fR')
             prev = node.tagName
-        elif node.nodeType == node.COMMENT_NODE:
-            pass
         else:
-            raise error.Error("unknown node %s in block xml" % node)
+            raise error.Error(f"unknown node {node} in block xml")
     if s != "" and not s.endswith('\n'):
         s += '\n'
     return s

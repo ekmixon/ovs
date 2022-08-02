@@ -20,7 +20,7 @@ import ovs.json
 
 def print_json(json):
     if isinstance(json, str):
-        print("error: %s" % json)
+        print(f"error: {json}")
         return False
     else:
         ovs.json.to_stream(json, sys.stdout)
@@ -73,11 +73,7 @@ def main(argv):
         sys.exit(1)
 
     input_file = args[0]
-    if input_file == "-":
-        stream = sys.stdin
-    else:
-        stream = open(input_file, "r")
-
+    stream = sys.stdin if input_file == "-" else open(input_file, "r")
     if multiple:
         ok = parse_multiple(stream)
     else:

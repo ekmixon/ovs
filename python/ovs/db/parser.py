@@ -49,12 +49,10 @@ class Parser(object):
         return self.__get(name, types, True, default)
 
     def __raise_error(self, message):
-        raise error.Error("Parsing %s failed: %s" % (self.name, message),
-                          self.json)
+        raise error.Error(f"Parsing {self.name} failed: {message}", self.json)
 
     def finish(self):
-        missing = set(self.json) - set(self.used)
-        if missing:
+        if missing := set(self.json) - set(self.used):
             name = missing.pop()
             if len(missing) > 1:
                 present = "and %d other members are" % len(missing)
@@ -83,8 +81,7 @@ def is_identifier(s):
 
 
 def json_type_to_string(type_):
-    number_types = [int]
-    number_types.extend([float])
+    number_types = [int, *[float]]
     number_types = tuple(number_types)
     if type_ is None:
         return "null"

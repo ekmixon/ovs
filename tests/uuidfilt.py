@@ -21,7 +21,7 @@ import sys
 
 
 def lookup_uuid(uuids, match):
-    return "<%s>" % uuids.setdefault(match.group(0), len(uuids))
+    return f"<{uuids.setdefault(match.group(0), len(uuids))}>"
 
 
 int_re = re.compile(r'\d+')

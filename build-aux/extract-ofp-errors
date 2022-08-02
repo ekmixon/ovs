@@ -13,12 +13,12 @@ version_map = {"1.0": 0x01,
                "1.3": 0x04,
                "1.4": 0x05,
                "1.5": 0x06}
-version_reverse_map = dict((v, k) for (k, v) in version_map.items())
+version_reverse_map = {v: k for (k, v) in version_map.items()}
 
 token = None
 line = ""
 idRe = "[a-zA-Z_][a-zA-Z_0-9]*"
-tokenRe = "#?" + idRe + "|[0-9]+|."
+tokenRe = f"#?{idRe}|[0-9]+|."
 inComment = False
 inDirective = False
 
@@ -62,7 +62,7 @@ def getToken():
                     line = line[commentEnd + 2:]
             else:
                 match = re.match(tokenRe, line)
-                token = match.group(0)
+                token = match[0]
                 line = line[len(token):]
                 if token.startswith('#'):
                     inDirective = True
@@ -82,7 +82,7 @@ def getToken():
                 line = line[:-2] + inputFile.readline()
                 lineNumber += 1
             if line == "":
-                if token == None:
+                if token is None:
                     fatal("unexpected end of input")
                 token = None
                 return False
@@ -103,7 +103,7 @@ def skipDirective():
         getToken()
 
 def isId(s):
-    return re.match(idRe + "$", s) != None
+    return re.match(f"{idRe}$", s) != None
 
 def forceId():
     if not isId(token):
@@ -114,22 +114,21 @@ def forceInteger():
         fatal("integer expected")
 
 def match(t):
-    if token == t:
-        getToken()
-        return True
-    else:
+    if token != t:
         return False
+    getToken()
+    return True
 
 def forceMatch(t):
     if not match(t):
-        fatal("%s expected" % t)
+        fatal(f"{t} expected")
 
 def parseTaggedName():
     assert token in ('struct', 'union')
     name = token
     getToken()
     forceId()
-    name = "%s %s" % (name, token)
+    name = f"{name} {token}"
     getToken()
     return name
 
@@ -178,11 +177,11 @@ def extract_vendor_ids(fn):
         if not m:
             continue
 
-        name = m.group(1)
-        id_ = int(m.group(2), 0)
+        name = m[1]
+        id_ = int(m[2], 0)
 
         if name in vendor_map:
-            error("%s: duplicate definition of vendor" % name)
+            error(f"{name}: duplicate definition of vendor")
             sys.stderr.write("%s: Here is the location of the previous "
                              "definition.\n" % vendor_loc[name])
             sys.exit(1)
@@ -191,15 +190,17 @@ def extract_vendor_ids(fn):
         vendor_loc[name] = "%s:%d" % (fileName, lineNumber)
 
     if not vendor_map:
-        fatal("%s: no vendor definitions found" % fn)
+        fatal(f"{fn}: no vendor definitions found")
 
     inputFile.close()
 
     vendor_reverse_map = {}
     for name, id_ in vendor_map.items():
         if id_ in vendor_reverse_map:
-            fatal("%s: duplicate vendor id for vendors %s and %s"
-                  % (id_, vendor_reverse_map[id_], name))
+            fatal(
+                f"{id_}: duplicate vendor id for vendors {vendor_reverse_map[id_]} and {name}"
+            )
+
         vendor_reverse_map[id_] = name
 
 def extract_ofp_errors(fn):
@@ -243,7 +244,7 @@ def extract_ofp_errors(fn):
 
         m = re.match('Expected: (.*)\.$', comment)
         if m:
-            expected_errors[m.group(1)] = (fileName, lineNumber)
+            expected_errors[m[1]] = (fileName, lineNumber)
             continue
 
         m = re.match('((?:.(?!\.  ))+.)\.\s+(.*)$', comment)
@@ -258,9 +259,9 @@ def extract_ofp_errors(fn):
         if not m:
             fatal("syntax error expecting OFPERR_ enum value")
 
-        enum = m.group(1)
+        enum = m[1]
         if enum in names:
-            fatal("%s specified twice" % enum)
+            fatal(f"{enum} specified twice")
 
         comments.append(re.sub('\[[^]]*\]', '', comment))
         names.append(enum)
@@ -269,21 +270,17 @@ def extract_ofp_errors(fn):
             m = re.match(r'([A-Z]+)([0-9.]+)(\+|-[0-9.]+)?\((\d+)(?:,(\d+))?\)$', dst)
             if not m:
                 fatal("%r: syntax error in destination" % dst)
-            vendor_name = m.group(1)
-            version1_name = m.group(2)
-            version2_name = m.group(3)
-            type_ = int(m.group(4))
-            if m.group(5):
-                code = int(m.group(5))
-            else:
-                code = None
-
+            vendor_name = m[1]
+            version1_name = m[2]
+            version2_name = m[3]
+            type_ = int(m[4])
+            code = int(m[5]) if m[5] else None
             if vendor_name not in vendor_map:
-                fatal("%s: unknown vendor" % vendor_name)
+                fatal(f"{vendor_name}: unknown vendor")
             vendor = vendor_map[vendor_name]
 
             if version1_name not in version_map:
-                fatal("%s: unknown OpenFlow version" % version1_name)
+                fatal(f"{version1_name}: unknown OpenFlow version")
             v1 = version_map[version1_name]
 
             if version2_name is None:
@@ -291,19 +288,20 @@ def extract_ofp_errors(fn):
             elif version2_name == "+":
                 v2 = max(version_map.values())
             elif version2_name[1:] not in version_map:
-                fatal("%s: unknown OpenFlow version" % version2_name[1:])
+                fatal(f"{version2_name[1:]}: unknown OpenFlow version")
             else:
                 v2 = version_map[version2_name[1:]]
 
             if v2 < v1:
-                fatal("%s%s: %s precedes %s"
-                      % (version1_name, version2_name,
-                         version2_name, version1_name))
+                fatal(
+                    f"{version1_name}{version2_name}: {version2_name} precedes {version1_name}"
+                )
+
 
             if vendor == vendor_map['OF']:
                 # All standard OpenFlow errors have a type and a code.
                 if code is None:
-                    fatal("%s: %s domain requires code" % (dst, vendor_name))
+                    fatal(f"{dst}: {vendor_name} domain requires code")
             elif vendor == vendor_map['NX']:
                 # Before OpenFlow 1.2, OVS used a Nicira extension to
                 # define errors that included a type and a code.
@@ -311,21 +309,21 @@ def extract_ofp_errors(fn):
                 # In OpenFlow 1.2 and later, Nicira extension errors
                 # are defined using the OpenFlow experimenter error
                 # mechanism that includes a type but not a code.
-                if v1 < version_map['1.2'] or v2 < version_map['1.2']:
-                    if code is None:
-                        fatal("%s: NX1.0 and NX1.1 domains require code"
-                              % (dst, vendor_name))
-                if v1 >= version_map['1.2'] or v2 >= version_map['1.2']:
-                    if code is not None:
-                        fatal("%s: NX1.2+ domains do not have codes" % dst)
+                if (
+                    v1 < version_map['1.2'] or v2 < version_map['1.2']
+                ) and code is None:
+                    fatal("%s: NX1.0 and NX1.1 domains require code"
+                          % (dst, vendor_name))
+                if (
+                    v1 >= version_map['1.2'] or v2 >= version_map['1.2']
+                ) and code is not None:
+                    fatal(f"{dst}: NX1.2+ domains do not have codes")
             else:
                 # Experimenter extension error for OF1.2+ only.
                 if v1 < version_map['1.2']:
-                    fatal("%s: %s domain not supported before OF1.2"
-                          % (dst, vendor_name))
+                    fatal(f"{dst}: {vendor_name} domain not supported before OF1.2")
                 if code is not None:
-                    fatal("%s: %s domains do not have codes"
-                          % (dst, vendor_name))
+                    fatal(f"{dst}: {vendor_name} domains do not have codes")
             if code is None:
                 code = 0
 
@@ -339,7 +337,7 @@ def extract_ofp_errors(fn):
                     if msg in expected_errors:
                         del expected_errors[msg]
                     else:
-                        error("%s: %s." % (dst, msg))
+                        error(f"{dst}: {msg}.")
                         sys.stderr.write("%s:%d: %s: Here is the location "
                                          "of the previous definition.\n"
                                          % (domain[version][vendor][type_][code][1],
@@ -401,13 +399,10 @@ static enum ofperr
             if value in found:
                 continue
             found.add(value)
-            if vendor:
-                vendor_s = "(%#xULL << 32) | " % vendor
-            else:
-                vendor_s = ""
+            vendor_s = "(%#xULL << 32) | " % vendor if vendor else ""
             print ("    case %s ((uint32_t) %d << 16) | %d:" % (vendor_s,
                                                                type_, code))
-            print ("        return OFPERR_%s;" % enum)
+            print(f"        return OFPERR_{enum};")
         print ("""\
     }
 
@@ -423,7 +418,7 @@ static const struct ofperr_domain %s = {
         for enum in names:
             if enum in map:
                 vendor, type_, code = map[enum]
-                if code == None:
+                if code is None:
                     code = -1
                 print ("        { %#8x, %2d, %3d }, /* %s */" % (vendor, type_, code, enum))
             else:
@@ -434,7 +429,7 @@ static const struct ofperr_domain %s = {
 
     for version_name, id_ in version_map.items():
         var = 'ofperr_of' + re.sub('[^A-Za-z0-9_]', '', version_name)
-        description = "OpenFlow %s" % version_name
+        description = f"OpenFlow {version_name}"
         output_domain(reverse[id_], var, description, id_)
 
 if __name__ == '__main__':

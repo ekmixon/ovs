@@ -20,7 +20,7 @@ def _signal_status_msg(type_, signr):
     s = "%s by signal %d" % (type_, signr)
     for name in signal.__dict__:
         if name.startswith("SIG") and getattr(signal, name) == signr:
-            return "%s (%s)" % (s, name)
+            return f"{s} ({name})"
     return s
 
 

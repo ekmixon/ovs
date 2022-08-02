@@ -61,10 +61,7 @@ def cmp(a, b):
 
 def compare_lines(a, b):
     if uuid_re.match(a):
-        if uuid_re.match(b):
-            return cmp(a[36:], b[36:])
-        else:
-            return 1
+        return cmp(a[36:], b[36:]) if uuid_re.match(b) else 1
     elif uuid_re.match(b):
         return -1
     else:

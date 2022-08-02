@@ -28,11 +28,7 @@ def main(argv):
         sys.exit(1)
 
     sockname1 = argv[1]
-    if len(argv) > 2:
-        sockname2 = argv[2]
-    else:
-        sockname2 = sockname1
-
+    sockname2 = argv[2] if len(argv) > 2 else sockname1
     signal.signal(signal.SIGALRM, signal.SIG_DFL)
     signal_alarm(5)
 
@@ -40,8 +36,7 @@ def main(argv):
     error, sock1 = ovs.socket_util.make_unix_socket(socket.SOCK_STREAM, False,
                                                     sockname1, None)
     if error:
-        sys.stderr.write("%s: bind failed (%s)" % (sockname1,
-                                                   os.strerror(error)))
+        sys.stderr.write(f"{sockname1}: bind failed ({os.strerror(error)})")
         sys.exit(1)
     sock1.listen(1)
 
@@ -50,8 +45,7 @@ def main(argv):
     error, sock2 = ovs.socket_util.make_unix_socket(socket.SOCK_STREAM, False,
                                                     None, sockname2)
     if error:
-        sys.stderr.write("%s: connect failed (%s)" % (sockname2,
-                                                      os.strerror(error)))
+        sys.stderr.write(f"{sockname2}: connect failed ({os.strerror(error)})")
         sys.exit(1)
 
 

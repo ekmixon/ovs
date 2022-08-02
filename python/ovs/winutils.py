@@ -16,15 +16,14 @@ import sys
 
 if sys.platform != 'win32':
     raise Exception("Intended to use only on Windows")
-else:
-    import ntsecuritycon
-    import pywintypes
-    import win32con
-    import win32event
-    import win32file
-    import win32pipe
-    import win32security
-    import winerror
+import ntsecuritycon
+import pywintypes
+import win32con
+import win32event
+import win32file
+import win32pipe
+import win32security
+import winerror
 
 
 def close_handle(handle, logger=None):
@@ -33,7 +32,7 @@ def close_handle(handle, logger=None):
         return None
     except pywintypes.error as e:
         if logger is not None:
-            logger("failed to close handle: %s" % e.strerror)
+            logger(f"failed to close handle: {e.strerror}")
         return e.winerror
 
 
@@ -154,7 +153,6 @@ def create_named_pipe(pipename, openMode=None, pipeMode=None,
             0,  # The index of the sub authority to set
             ntsecuritycon.SECURITY_NETWORK_RID)
 
-        allowedPsids = []
         # Allow Windows Services to access the Named Pipe.
         allowedPsid_0 = win32security.SID()
         allowedPsid_0.Initialize(
@@ -175,9 +173,7 @@ def create_named_pipe(pipename, openMode=None, pipeMode=None,
             1,  # The index of the sub authority to set
             ntsecuritycon.DOMAIN_ALIAS_RID_ADMINS)
 
-        allowedPsids.append(allowedPsid_0)
-        allowedPsids.append(allowedPsid_1)
-
+        allowedPsids = [allowedPsid_0, allowedPsid_1]
         # Initialize an ACL.
         acl = win32security.ACL()
         acl.Initialize()
@@ -210,10 +206,7 @@ def create_named_pipe(pipename, openMode=None, pipeMode=None,
                                           nDefaultTimeOut,
                                           saAttr)
 
-        if npipe == win32file.INVALID_HANDLE_VALUE:
-            return None
-
-        return npipe
+        return None if npipe == win32file.INVALID_HANDLE_VALUE else npipe
     except pywintypes.error:
         return None
 
@@ -232,11 +225,7 @@ def set_pipe_mode(hPipe, mode=-1, maxCollectionCount=None,
 
 def connect_named_pipe(pipe_handle, overlapped=None):
     try:
-        # If the result of ConnectNamedPipe is ERROR_IO_PENDING or
-        # ERROR_PIPE_CONNECTED, then this value is returned.
-        # All other error values raise a win32 exception
-        error = win32pipe.ConnectNamedPipe(pipe_handle, overlapped)
-        return error
+        return win32pipe.ConnectNamedPipe(pipe_handle, overlapped)
     except pywintypes.error as e:
         return e.winerror
 

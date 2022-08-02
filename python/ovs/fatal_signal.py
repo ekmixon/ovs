@@ -153,12 +153,13 @@ def _init():
             if signal.getsignal(signr) == signal.SIG_DFL:
                 signal.signal(signr, _signal_handler)
         atexit.register(_atexit_handler)
+                signal.signal(signr, _signal_handler)
+        atexit.register(_atexit_handler)
 
 
 def signal_alarm(timeout):
     if not timeout:
-        env_timeout = os.environ.get('OVS_CTL_TIMEOUT')
-        if env_timeout:
+        if env_timeout := os.environ.get('OVS_CTL_TIMEOUT'):
             timeout = int(env_timeout)
     if not timeout:
         return
@@ -179,5 +180,7 @@ def signal_alarm(timeout):
 
         alarm = Alarm(timeout)
         alarm.start()
+    else:
+        signal.alarm(timeout)
     else:
         signal.alarm(timeout)

@@ -34,13 +34,13 @@ def handle_rpc(rpc, msg):
         else:
             reply = ovs.jsonrpc.Message.create_error(
                 {"error": "unknown method"}, msg.id)
-            sys.stderr.write("unknown request %s" % msg.method)
+            sys.stderr.write(f"unknown request {msg.method}")
     elif msg.type == ovs.jsonrpc.Message.T_NOTIFY:
         if msg.method == "shutdown":
             done = True
         else:
             rpc.error(errno.ENOTTY)
-            sys.stderr.write("unknown notification %s" % msg.method)
+            sys.stderr.write(f"unknown notification {msg.method}")
     else:
         rpc.error(errno.EPROTO)
         sys.stderr.write("unsolicited JSON-RPC reply or error\n")
@@ -84,12 +84,10 @@ def do_listen(name):
             error = 0
             if not rpc.get_backlog():
                 error, msg = rpc.recv()
-                if not error:
-                    if handle_rpc(rpc, msg):
-                        done = True
+                if not error and handle_rpc(rpc, msg):
+                    done = True
 
-            error = rpc.get_status()
-            if error:
+            if error := rpc.get_status():
                 rpc.close()
                 dead_rpcs.append(rpc)
         rpcs = [rpc for rpc in rpcs if rpc not in dead_rpcs]
@@ -110,8 +108,7 @@ def do_listen(name):
 def do_request(name, method, params_string):
     params = ovs.json.from_string(params_string)
     msg = ovs.jsonrpc.Message.create_request(method, params)
-    s = msg.is_valid()
-    if s:
+    if s := msg.is_valid():
         sys.stderr.write("not a valid JSON-RPC request: %s\n" % s)
         sys.exit(1)
 
@@ -141,8 +138,7 @@ def do_request(name, method, params_string):
 def do_notify(name, method, params_string):
     params = ovs.json.from_string(params_string)
     msg = ovs.jsonrpc.Message.create_notify(method, params)
-    s = msg.is_valid()
-    if s:
+    if s := msg.is_valid():
         sys.stderr.write("not a valid JSON-RPC notification: %s\n" % s)
         sys.exit(1)
 
@@ -154,8 +150,7 @@ def do_notify(name, method, params_string):
 
     rpc = ovs.jsonrpc.Connection(stream)
 
-    error = rpc.send_block(msg)
-    if error:
+    if error := rpc.send_block(msg):
         sys.stderr.write("could not send notification: %s\n"
                          % os.strerror(error))
         sys.exit(1)

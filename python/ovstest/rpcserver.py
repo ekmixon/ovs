@@ -124,8 +124,7 @@ class TestArena(xmlrpc.XMLRPC):
         """
         sender = udp.UdpSender(tuple(host), count, size, duration)
         reactor.listenUDP(0, sender)
-        handle_id = self.__acquire_handle(sender)
-        return handle_id
+        return self.__acquire_handle(sender)
 
     def xmlrpc_get_udp_listener_results(self, handle):
         """
@@ -166,8 +165,7 @@ class TestArena(xmlrpc.XMLRPC):
         try:
             listener = tcp.TcpListenerFactory()
             port = reactor.listenTCP(port, listener)
-            handle_id = self.__acquire_handle((listener, port))
-            return handle_id
+            return self.__acquire_handle((listener, port))
         except CannotListenError:
             return -1
 
@@ -177,8 +175,7 @@ class TestArena(xmlrpc.XMLRPC):
         """
         sender = tcp.TcpSenderFactory(duration)
         connector = reactor.connectTCP(his_ip, his_port, sender)
-        handle_id = self.__acquire_handle((sender, connector))
-        return handle_id
+        return self.__acquire_handle((sender, connector))
 
     def xmlrpc_get_tcp_listener_results(self, handle):
         """

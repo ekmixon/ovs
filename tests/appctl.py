@@ -60,10 +60,10 @@ def main():
     client.close()
 
     if err_no:
-        ovs.util.ovs_fatal(err_no, "%s: transaction error" % target)
+        ovs.util.ovs_fatal(err_no, f"{target}: transaction error")
     elif error is not None:
         sys.stderr.write(error)
-        ovs.util.ovs_error(0, "%s: server returned an error" % target)
+        ovs.util.ovs_error(0, f"{target}: server returned an error")
         sys.exit(2)
     else:
         assert result is not None

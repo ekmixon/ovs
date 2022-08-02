@@ -25,17 +25,15 @@ def soexpand(include_dirs, src, dst):
         if not line:
             break
 
-        name = soutil.extract_include_directive(line)
-        if name:
-            fn = soutil.find_file(include_dirs, name)
-            if fn:
+        if name := soutil.extract_include_directive(line):
+            if fn := soutil.find_file(include_dirs, name):
                 try:
                     f = open(fn)
                     while True:
-                        inner = f.readline()
-                        if not inner:
+                        if inner := f.readline():
+                            dst.write(inner)
+                        else:
                             break
-                        dst.write(inner)
                 except IOError as e:
                     sys.stderr.write("%s: open: %s\n" % (fn, e.strerror))
                     ok = False

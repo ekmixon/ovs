@@ -62,7 +62,7 @@ with open(filename, 'r') as f:
     for line in f:
         if 'AC_INIT' in line:
             # Parse "AC_INIT(openvswitch, 2.7.90, bugs@openvswitch.org)":
-            release = line.split(',')[1].strip(string.whitespace + '[]')
+            release = line.split(',')[1].strip(f'{string.whitespace}[]')
             break
 if release is None:
     sys.stderr.write('%s: failed to determine Open vSwitch version\n'
@@ -74,7 +74,7 @@ if release is None:
 # However, it's important to know the difference between, e.g., 2.7
 # and 2.7.90, which can be very different versions (2.7.90 may be much
 # closer to 2.8 than to 2.7), so check for that.
-version = release if '.90' in release else '.'.join(release.split('.')[0:2])
+version = release if '.90' in release else '.'.join(release.split('.')[:2])
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -84,16 +84,9 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # If true, check the validity of #anchors in links.
 linkcheck_anchors = False
 
-# -- Options for HTML output ----------------------------------------------
-
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
 if use_ovs_theme:
     html_theme = 'ovs'
 
-# Add any paths that contain custom themes here, relative to this directory.
-if use_ovs_theme:
     html_theme_path = [ovs_sphinx_theme.get_theme_dir()]
 else:
     html_theme_path = []
@@ -144,6 +137,12 @@ _man_pages = [
 
 # Generate list of (path, name, description, [author, ...], section)
 man_pages = [
-    ('ref/%s' % file_name, file_name.split('.', 1)[0],
-     description, [author], file_name.split('.', 1)[1])
-    for file_name, description in _man_pages]
+    (
+        f'ref/{file_name}',
+        file_name.split('.', 1)[0],
+        description,
+        [author],
+        file_name.split('.', 1)[1],
+    )
+    for file_name, description in _man_pages
+]

@@ -63,8 +63,10 @@ def main():
     ovs.daemon.daemonize_start()
     error, server = ovs.unixctl.server.UnixctlServer.create(args.unixctl)
     if error:
-        ovs.util.ovs_fatal(error, "could not create unixctl server at %s"
-                           % args.unixctl, vlog)
+        ovs.util.ovs_fatal(
+            error, f"could not create unixctl server at {args.unixctl}", vlog
+        )
+
 
     ovs.unixctl.command_register("exit", "", 0, 0, unixctl_exit, "aux_exit")
     ovs.unixctl.command_register("echo", "[arg ...]", 1, 2, unixctl_echo,

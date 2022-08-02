@@ -127,18 +127,21 @@ def diff_stats(old, new, delta):
                  new.seqno))
 
     if (old.is_connected != new.is_connected):
-        if new.is_connected:
-            negate = ""
-        else:
-            negate = "dis"
-        print("  %sconnected" % negate)
+        negate = "" if new.is_connected else "dis"
+        print(f"  {negate}connected")
 
-    if (old.last_connected != new.last_connected or
-        (new.msec_since_connect is not None and
-         old.msec_since_connect != new.msec_since_connect - delta) or
-        (old.total_connected_duration != new.total_connected_duration - delta
-            and not (old.total_connected_duration == 0 and
-                new.total_connected_duration == 0))):
+    if (
+        old.last_connected != new.last_connected
+        or (
+            new.msec_since_connect is not None
+            and old.msec_since_connect != new.msec_since_connect - delta
+        )
+        or old.total_connected_duration != new.total_connected_duration - delta
+        and (
+            old.total_connected_duration != 0
+            or new.total_connected_duration != 0
+        )
+    ):
         print("  last connected %d ms ago, connected %d ms total"
               % (new.msec_since_connect, new.total_connected_duration))
 
@@ -216,10 +219,7 @@ def main():
             continue
 
         command = args[0]
-        if len(args) > 1:
-            op = args[1]
-        else:
-            op = None
+        op = args[1] if len(args) > 1 else None
         commands[command](op)
 
         if old_time != now:

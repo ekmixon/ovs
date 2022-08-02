@@ -36,7 +36,7 @@ def make_short_name(long_name):
     long_name = os.path.abspath(long_name)
     long_dirname = os.path.dirname(long_name)
     tmpdir = os.getenv('TMPDIR', '/tmp')
-    for x in range(0, 1000):
+    for x in range(1000):
         link_name = \
             '%s/ovs-un-py-%d-%d' % (tmpdir, random.randint(0, 10000), x)
         try:
@@ -173,23 +173,22 @@ def check_connection_completion(sock):
         p = ovs.poller.get_system_poll()
         p.register(sock, ovs.poller.POLLOUT)
     pfds = p.poll(0)
-    if len(pfds) == 1:
-        revents = pfds[0][1]
-        if revents & ovs.poller.POLLERR or revents & ovs.poller.POLLHUP:
-            try:
-                # The following should raise an exception.
-                sock.send("\0".encode(), socket.MSG_DONTWAIT)
-
-                # (Here's where we end up if it didn't.)
-                # XXX rate-limit
-                vlog.err("poll return POLLERR but send succeeded")
-                return errno.EPROTO
-            except socket.error as e:
-                return get_exception_errno(e)
-        else:
-            return 0
-    else:
+    if len(pfds) != 1:
         return errno.EAGAIN
+    revents = pfds[0][1]
+    if revents & ovs.poller.POLLERR or revents & ovs.poller.POLLHUP:
+        try:
+            # The following should raise an exception.
+            sock.send("\0".encode(), socket.MSG_DONTWAIT)
+
+            # (Here's where we end up if it didn't.)
+            # XXX rate-limit
+            vlog.err("poll return POLLERR but send succeeded")
+            return errno.EPROTO
+        except socket.error as e:
+            return get_exception_errno(e)
+    else:
+        return 0
 
 
 def is_valid_ipv4_address(address):
@@ -209,24 +208,23 @@ def is_valid_ipv4_address(address):
 def inet_parse_active(target, default_port):
     address = target.split(":")
     if len(address) >= 2:
-        host_name = ":".join(address[0:-1]).lstrip('[').rstrip(']')
+        host_name = ":".join(address[:-1]).lstrip('[').rstrip(']')
         port = int(address[-1])
     else:
         if default_port:
             port = default_port
         else:
-            raise ValueError("%s: port number must be specified" % target)
+            raise ValueError(f"{target}: port number must be specified")
         host_name = address[0]
     if not host_name:
-        raise ValueError("%s: bad peer name format" % target)
+        raise ValueError(f"{target}: bad peer name format")
     return (host_name, port)
 
 
 def inet_open_active(style, target, default_port, dscp):
     address = inet_parse_active(target, default_port)
     try:
-        is_addr_inet = is_valid_ipv4_address(address[0])
-        if is_addr_inet:
+        if is_addr_inet := is_valid_ipv4_address(address[0]):
             sock = socket.socket(socket.AF_INET, style, 0)
             family = socket.AF_INET
         else:
@@ -259,10 +257,7 @@ def get_exception_errno(e):
     exception is documented as having two completely different forms of
     arguments: either a string or a (errno, string) tuple.  We only want the
     errno."""
-    if isinstance(e.args, tuple):
-        return e.args[0]
-    else:
-        return errno.EPROTO
+    return e.args[0] if isinstance(e.args, tuple) else errno.EPROTO
 
 
 null_fd = -1
@@ -279,8 +274,7 @@ def get_null_fd():
             # '/dev/null' for Unix and 'nul' for Windows
             null_fd = os.open(os.devnull, os.O_RDWR)
         except OSError as e:
-            vlog.err("could not open %s: %s" % (os.devnull,
-                                                os.strerror(e.errno)))
+            vlog.err(f"could not open {os.devnull}: {os.strerror(e.errno)}")
             return -e.errno
     return null_fd
 
@@ -315,8 +309,9 @@ def set_nonblocking(sock):
     try:
         sock.setblocking(0)
     except socket.error as e:
-        vlog.err("could not set nonblocking mode on socket: %s"
-                 % os.strerror(get_exception_errno(e)))
+        vlog.err(
+            f"could not set nonblocking mode on socket: {os.strerror(get_exception_errno(e))}"
+        )
 
 
 def set_dscp(sock, family, dscp):

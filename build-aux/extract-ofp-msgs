@@ -66,12 +66,10 @@ only controls #line directives in the output.\
     sys.exit(0)
 
 def make_sizeof(s):
-    m = re.match(r'(.*) up to (.*)', s)
-    if m:
-        struct, member = m.groups()
-        return "offsetof(%s, %s)" % (struct, member)
-    else:
-        return "sizeof(%s)" % s
+    if not (m := re.match(r'(.*) up to (.*)', s)):
+        return f"sizeof({s})"
+    struct, member = m.groups()
+    return f"offsetof({struct}, {member})"
 
 def extract_ofp_msgs(output_file_name):
     raw_types = []

@@ -92,12 +92,10 @@ def start_process(args):
 
 def get_driver(iface):
     ret, out, _err = start_process(["ethtool", "-i", iface])
-    if ret == 0:
-        lines = out.splitlines()
-        driver = "%s(%s)" % (lines[0], lines[1])  # driver name + version
-    else:
-        driver = None
-    return driver
+    if ret != 0:
+        return None
+    lines = out.splitlines()
+    return f"{lines[0]}({lines[1]})"
 
 
 def interface_up(iface):
@@ -128,17 +126,17 @@ def interface_remove_ip(iface, ip_addr, mask):
 
 def interface_ip_op(iface, ip_addr, mask, op):
     if mask is not None:
-        arg = "%s/%s" % (ip_addr, mask)
+        arg = f"{ip_addr}/{mask}"
     elif '/' in ip_addr:
         arg = ip_addr
     else:
         (x1, x2, x3, x4) = struct.unpack("BBBB", socket.inet_aton(ip_addr))
         if x1 < 128:
-            arg = "%s/8" % ip_addr
+            arg = f"{ip_addr}/8"
         elif x1 < 192:
-            arg = "%s/16" % ip_addr
+            arg = f"{ip_addr}/16"
         else:
-            arg = "%s/24" % ip_addr
+            arg = f"{ip_addr}/24"
     ret, _out, _err = start_process(["ip", "addr", op, arg, "dev", iface])
     return ret
 
@@ -151,12 +149,11 @@ def interface_get_ip(iface):
     args = ["ip", "addr", "show", iface]
     ret, out, _err = start_process(args)
 
-    if ret == 0:
-        ip = re.search(r'inet (\S+)/(\S+)', out)
-        if ip is not None:
-            return (ip.group(1), ip.group(2))
-    else:
+    if ret != 0:
         return ret
+    ip = re.search(r'inet (\S+)/(\S+)', out)
+    if ip is not None:
+        return ip[1], ip[2]
 
 
 def move_routes(iface1, iface2):
@@ -179,9 +176,8 @@ def get_interface_from_routing_decision(ip):
     args = ["ip", "route", "get", ip]
     ret, out, _err = start_process(args)
     if ret == 0:
-        iface = re.search(r'dev (\S+)', out)
-        if iface:
-            return iface.group(1)
+        if iface := re.search(r'dev (\S+)', out):
+            return iface[1]
     return None
 
 
@@ -209,8 +205,7 @@ def start_local_server(port):
         fcntl.fcntl(p.stdout.fileno(), fcntl.F_GETFL) | os.O_NONBLOCK)
 
     while p.poll() is None:
-        fd = select.select([p.stdout.fileno()], [], [])[0]
-        if fd:
+        if fd := select.select([p.stdout.fileno()], [], [])[0]:
             out = p.stdout.readline()
             if out.startswith("Starting RPC server"):
                 break
@@ -224,8 +219,8 @@ def get_datagram_sizes(mtu1, mtu2):
     This function calculates all the "interesting" datagram sizes so that
     we test both - receive and send side with different packets sizes.
     """
-    s1 = set([8, mtu1 - 100, mtu1 - 28, mtu1])
-    s2 = set([8, mtu2 - 100, mtu2 - 28, mtu2])
+    s1 = {8, mtu1 - 100, mtu1 - 28, mtu1}
+    s2 = {8, mtu2 - 100, mtu2 - 28, mtu2}
     return sorted(s1.union(s2))
 
 
@@ -242,8 +237,8 @@ def bandwidth_to_string(bwidth):
     """Convert bandwidth from long to string and add units."""
     bwidth = bwidth * 8  # Convert back to bits/second
     if bwidth >= 10000000:
-        return str(int(bwidth / 1000000)) + "Mbps"
+        return f"{int(bwidth / 1000000)}Mbps"
     elif bwidth > 10000:
-        return str(int(bwidth / 1000)) + "Kbps"
+        return f"{int(bwidth / 1000)}Kbps"
     else:
-        return str(int(bwidth)) + "bps"
+        return f"{int(bwidth)}bps"

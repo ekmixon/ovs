@@ -103,11 +103,7 @@ class _SelectSelect(object):
 
             # win32event.INFINITE timeout is -1
             # timeout must be an int number, expressed in ms
-            if timeout == 0.1:
-                timeout = 100
-            else:
-                timeout = int(timeout)
-
+            timeout = 100 if timeout == 0.1 else int(timeout)
             # Wait until any of the events is set to signaled
             try:
                 retval = winutils.win32event.WaitForMultipleObjects(
@@ -129,11 +125,7 @@ class _SelectSelect(object):
 
             return [(events[retval], revent)]
         else:
-            if timeout == -1:
-                # epoll uses -1 for infinite timeout, select uses None.
-                timeout = None
-            else:
-                timeout = float(timeout) / 1000
+            timeout = None if timeout == -1 else float(timeout) / 1000
             rlist, wlist, xlist = select.select(self.rlist,
                                                 self.wlist,
                                                 self.xlist,
@@ -227,19 +219,18 @@ class Poller(object):
         self.timer_wait() elapses, or not at all if self.immediate_wake() has
         been called."""
         try:
-            try:
-                events = self.poll.poll(self.timeout)
-                self.__log_wakeup(events)
-            except OSError as e:
-                """ On Windows, the select function from poll raises OSError
+            events = self.poll.poll(self.timeout)
+            self.__log_wakeup(events)
+        except OSError as e:
+            """ On Windows, the select function from poll raises OSError
                 exception if the polled array is empty."""
-                if e.errno != errno.EINTR:
-                    vlog.err("poll: %s" % os.strerror(e.errno))
-            except select.error as e:
-                # XXX rate-limit
-                error, msg = e
-                if error != errno.EINTR:
-                    vlog.err("poll: %s" % e[1])
+            if e.errno != errno.EINTR:
+                vlog.err(f"poll: {os.strerror(e.errno)}")
+        except select.error as e:
+            # XXX rate-limit
+            error, msg = e
+            if error != errno.EINTR:
+                vlog.err(f"poll: {e[1]}")
         finally:
             self.__reset()
 

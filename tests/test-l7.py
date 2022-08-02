@@ -49,7 +49,6 @@ def get_ftpd():
         server = [FTPServer, OVSFTPHandler, 21]
     except ImportError:
         server = None
-        pass
     return server
 
 
@@ -69,7 +68,6 @@ def get_tftpd():
         server = [OVSTFTPServer, None, TftpShared.DEF_TFTP_PORT]
     except (ImportError, SyntaxError):
         server = None
-        pass
     return server
 
 
@@ -84,8 +82,13 @@ def main():
     protocols = [srv for srv in SERVERS if SERVERS[srv] is not None]
     parser = argparse.ArgumentParser(
         description='Run basic application servers.')
-    parser.add_argument('proto', default='http', nargs='?',
-                        help='protocol to serve (%s)' % protocols)
+    parser.add_argument(
+        'proto',
+        default='http',
+        nargs='?',
+        help=f'protocol to serve ({protocols})',
+    )
+
     args = parser.parse_args()
 
     if args.proto not in protocols:

@@ -20,10 +20,7 @@ class Error(Exception):
         self.msg = msg
         self.json = json
         if tag is None:
-            if json is None:
-                self.tag = "ovsdb error"
-            else:
-                self.tag = "syntax error"
+            self.tag = "ovsdb error" if json is None else "syntax error"
         else:
             self.tag = tag
 
@@ -31,4 +28,4 @@ class Error(Exception):
         syntax = ""
         if self.json is not None:
             syntax = 'syntax "%s": ' % ovs.json.to_string(self.json)
-        Exception.__init__(self, "%s%s: %s" % (syntax, self.tag, self.msg))
+        Exception.__init__(self, f"{syntax}{self.tag}: {self.msg}")

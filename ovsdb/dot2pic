@@ -56,7 +56,7 @@ def dot2pic(src, dst):
             # Extract x,y coordinates.
             words = words[4:]
             xy = []
-            for i in range(n):
+            for _ in range(n):
                 x = float(words[0]) * scale
                 y = float(words[1]) * scale
                 words = words[2:]
@@ -64,10 +64,7 @@ def dot2pic(src, dst):
 
             # Extract style and color from end of words.
             style, color = words[-2:]
-            words = words[:-2]
-
-            # If there's anything left, that's the label.
-            if words:
+            if words := words[:-2]:
                 xl = float(words[-2]) * scale
                 yl = float(words[-1]) * scale
                 label = ' '.join(words[:-2])

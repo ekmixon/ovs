@@ -45,7 +45,7 @@ class IpfixEntityHandler(xml.sax.handler.ContentHandler):
     def __init__(self):
         self.current_field_name = None
         self.current_field_value = []
-        self.current_record = dict()
+        self.current_record = {}
 
     def startDocument(self):
         print("""\
@@ -60,10 +60,7 @@ class IpfixEntityHandler(xml.sax.handler.ContentHandler):
 #undef IPFIX_ENTITY""")
 
     def startElement(self, name, attrs):
-        if name in self.RECORD_FIELDS:
-            self.current_field_name = name
-        else:
-            self.current_field_name = None
+        self.current_field_name = name if name in self.RECORD_FIELDS else None
         self.current_field_value = []
 
     @staticmethod

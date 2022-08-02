@@ -78,11 +78,8 @@ def ovs_vsctl_set(table, record, column, key, value):
     caller should also set the key, otherwise the key should be left as an
     empty string.
     """
-    if key is None:
-        index = column
-    else:
-        index = "%s:%s" % (column, key)
-    index_value = "%s=%s" % (index, value)
+    index = column if key is None else f"{column}:{key}"
+    index_value = f"{index}={value}"
     ret, _out, _err = util.start_process(["ovs-vsctl", "set", table, record,
                                           index_value])
     return ret
@@ -101,7 +98,6 @@ def ovs_get_physical_interface(bridge):
         for iface in ifaces:
             ret, out, _err = util.start_process(["ovs-vsctl", "get",
                                                  "Interface", iface, "type"])
-            if ret == 0:
-                if ('""' in out) or ('system' in out):
-                    return iface  # this should be the physical interface
+            if ret == 0 and (('""' in out) or ('system' in out)):
+                return iface  # this should be the physical interface
     return None

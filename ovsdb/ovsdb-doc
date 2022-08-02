@@ -30,10 +30,10 @@ argv0 = sys.argv[0]
 
 def typeAndConstraintsToNroff(column):
     type = column.type.toEnglish(escape_nroff_literal)
-    constraints = column.type.constraintsToEnglish(escape_nroff_literal,
-                                                   text_to_nroff)
-    if constraints:
-        type += ", " + constraints
+    if constraints := column.type.constraintsToEnglish(
+        escape_nroff_literal, text_to_nroff
+    ):
+        type += f", {constraints}"
     if column.unique:
         type += " (must be unique within table)"
     return type
@@ -45,11 +45,11 @@ def columnGroupToNroff(table, groupXml, documented_columns):
         if (node.nodeType == node.ELEMENT_NODE
             and node.tagName in ('column', 'group')):
             columnNodes += [node]
+        elif columnNodes and (
+            node.nodeType != node.TEXT_NODE or not node.data.isspace()
+        ):
+            raise error.Error(f"text follows <column> or <group> inside <group>: {node}")
         else:
-            if (columnNodes
-                and not (node.nodeType == node.TEXT_NODE
-                         and node.data.isspace())):
-                raise error.Error("text follows <column> or <group> inside <group>: %s" % node)
             introNodes += [node]
 
     summary = []
@@ -78,7 +78,7 @@ def columnGroupToNroff(table, groupXml, documented_columns):
                 else:
                     type_ = column.type.value
 
-                nameNroff = "%s : %s" % (name, key)
+                nameNroff = f"{name} : {key}"
 
                 if column.type.value:
                     typeNroff = "optional %s" % column.type.value.toEnglish(
@@ -92,21 +92,22 @@ def columnGroupToNroff(table, groupXml, documented_columns):
                         if type_.type != column.type.value.type:
                             type_english = type_.toEnglish()
                             if type_english[0] in 'aeiou':
-                                typeNroff += ", containing an %s" % type_english
+                                typeNroff += f", containing an {type_english}"
                             else:
-                                typeNroff += ", containing a %s" % type_english
-                        constraints = (
-                            type_.constraintsToEnglish(escape_nroff_literal,
-                                                       text_to_nroff))
-                        if constraints:
-                            typeNroff += ", %s" % constraints
+                                typeNroff += f", containing a {type_english}"
+                        if constraints := (
+                            type_.constraintsToEnglish(
+                                escape_nroff_literal, text_to_nroff
+                            )
+                        ):
+                            typeNroff += f", {constraints}"
                 else:
                     typeNroff = "none"
             else:
                 nameNroff = name
                 typeNroff = typeAndConstraintsToNroff(column)
             if not column.mutable:
-                typeNroff = "immutable %s" % typeNroff
+                typeNroff = f"immutable {typeNroff}"
             body += '.IP "\\fB%s\\fR: %s"\n' % (nameNroff, typeNroff)
             body += block_xml_to_nroff(node.childNodes, '.IP') + "\n"
             summary += [('column', nameNroff, typeNroff)]
@@ -118,7 +119,7 @@ def columnGroupToNroff(table, groupXml, documented_columns):
             body += '.ST "%s:"\n' % text_to_nroff(title)
             body += subIntro + subBody
         else:
-            raise error.Error("unknown element %s in <table>" % node.tagName)
+            raise error.Error(f"unknown element {node.tagName} in <table>")
     return summary, intro, body
 
 def tableSummaryToNroff(summary, level=0):
@@ -151,8 +152,7 @@ def tableToNroff(schema, tableXml):
     schema_columns = set(table.columns.keys())
     undocumented_columns = schema_columns - documented_columns
     for column in undocumented_columns:
-        raise error.Error("table %s has undocumented column %s"
-                          % (tableName, column))
+        raise error.Error(f"table {tableName} has undocumented column {column}")
 
     return s
 
@@ -169,7 +169,7 @@ def docsToNroff(schemaFile, xmlFile, erFile, version=None):
     else:
         manpage = schema.name
 
-    if version == None:
+    if version is None:
         version = "UNKNOWN"
 
     # Putting '\" p as the first line tells "man" that the manpage
@@ -207,16 +207,16 @@ def docsToNroff(schemaFile, xmlFile, erFile, version=None):
             if dbNode.hasAttribute("title"):
                 title = dbNode.attributes['title'].nodeValue
             else:
-                title = name + " configuration."
+                title = f"{name} configuration."
             summary += [(name, title)]
         else:
             introNodes += [dbNode]
 
-    documented_tables = set((name for (name, title) in summary))
+    documented_tables = {name for (name, title) in summary}
     schema_tables = set(schema.tables.keys())
     undocumented_tables = schema_tables - documented_tables
     for table in undocumented_tables:
-        raise error.Error("undocumented table %s" % table)
+        raise error.Error(f"undocumented table {table}")
 
     s += block_xml_to_nroff(introNodes) + "\n"
 
@@ -253,10 +253,9 @@ constraint on the number of allowed values: \\fB?\\fR for zero or one,
 represent strong references; thin lines represent weak references.
 .RS -1in
 """
-        erStream = open(erFile, "r")
-        for line in erStream:
-            s += line + '\n'
-        erStream.close()
+        with open(erFile, "r") as erStream:
+            for line in erStream:
+                s += line + '\n'
         s += ".RE\\}\n"
 
     for node in tableNodes:

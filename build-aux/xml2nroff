@@ -54,7 +54,7 @@ def manpage_to_nroff(xml_file, subst, include_path, version=None):
         content = None
         for dir in include_path:
             try:
-                with open("%s/%s" % (dir, fn)) as xi_f:
+                with open(f"{dir}/{fn}") as xi_f:
                     content = xi_f.read()
             except IOError:
                 pass
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         value = value.replace('>', '&gt;')
         value = value.replace('"', '&quot;')
         value = value.replace("'", '&apos;')
-        subst['@%s@' % var] = value
+        subst[f'@{var}@'] = value
 
     try:
         s = manpage_to_nroff(args[0], subst, include_path, version)
@@ -143,8 +143,7 @@ if __name__ == "__main__":
         sys.stderr.write("%s: %s\n" % (argv0, e.msg))
         sys.exit(1)
     for line in s.splitlines():
-        line = line.strip()
-        if line:
+        if line := line.strip():
             print(line)
 
 

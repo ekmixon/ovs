@@ -120,13 +120,12 @@ def server_endpoint(string):
     4. Fourth element is InnerPort (if omitted will use default value 15532)
     """
     value = string.split(',')
-    if len(value) == 2:
-        ret1 = ip_optional_port(value[0], CONTROL_PORT, ip_address)
-        ret2 = ip_optional_port(value[1], DATA_PORT, ip_optional_mask)
-        return (ret1[0], ret1[1], ret2[0], ret2[1])
-    else:
+    if len(value) != 2:
         raise argparse.ArgumentTypeError("OuterIP:OuterPort and InnerIP/Mask:"
                                          "InnerPort must be comma separated")
+    ret1 = ip_optional_port(value[0], CONTROL_PORT, ip_address)
+    ret2 = ip_optional_port(value[1], DATA_PORT, ip_optional_mask)
+    return (ret1[0], ret1[1], ret2[0], ret2[1])
 
 
 class UniqueServerAction(argparse.Action):
@@ -145,12 +144,11 @@ class UniqueServerAction(argparse.Action):
                 raise argparse.ArgumentError(self, str(sys.exc_info()[1]))
             if endpoint[0] in outer_ips:
                 raise argparse.ArgumentError(self, "Duplicate OuterIPs found")
+            outer_ips.add(endpoint[0])
+            if endpoint[0] == "127.0.0.1":
+                endpoints.insert(0, endpoint)
             else:
-                outer_ips.add(endpoint[0])
-                if endpoint[0] == "127.0.0.1":
-                    endpoints.insert(0, endpoint)
-                else:
-                    endpoints.append(endpoint)
+                endpoints.append(endpoint)
         setattr(namespace, self.dest, endpoints)
 
 
@@ -183,10 +181,11 @@ def l3_endpoint_client(string):
     except ValueError:
         raise argparse.ArgumentTypeError("All 3 IP addresses must be comma "
                                          "separated.")
-    r = (ip_address(remote_ip),
-         ip_optional_port_port(me, CONTROL_PORT, DATA_PORT, ip_optional_mask),
-         ip_optional_port_port(he, CONTROL_PORT, DATA_PORT, ip_address))
-    return r
+    return (
+        ip_address(remote_ip),
+        ip_optional_port_port(me, CONTROL_PORT, DATA_PORT, ip_optional_mask),
+        ip_optional_port_port(he, CONTROL_PORT, DATA_PORT, ip_address),
+    )
 
 
 def l3_endpoint_server(string):

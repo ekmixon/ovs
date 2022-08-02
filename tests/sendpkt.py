@@ -52,17 +52,14 @@ if options.packet_type != "eth":
 # if not present in the user input and validate the hex bytes
 hex_list = []
 for a in args[1:]:
-    if a[:2] != "0x":
-        hex_byte = "0x" + a
-    else:
-        hex_byte = a
+    hex_byte = f"0x{a}" if a[:2] != "0x" else a
     try:
         temp = int(hex_byte, 0)
     except:
-        parser.error("invalid hex byte " + a)
+        parser.error(f"invalid hex byte {a}")
 
     if temp > 0xff:
-        parser.error("hex byte " + a + " cannot be greater than 0xff!")
+        parser.error(f"hex byte {a} cannot be greater than 0xff!")
 
     hex_list.append(temp)
 
@@ -74,22 +71,19 @@ else:
 try:
     sockfd = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
 except socket.error as msg:
-    print('unable to create socket! error code: ' + str(msg[0]) + ' : '
-                                                                    + msg[1])
+    print((f'unable to create socket! error code: {str(msg[0])} : ' + msg[1]))
     sys.exit(2)
 
 try:
     sockfd.bind((args[0], 0))
 except socket.error as msg:
-    print('unable to bind socket! error code: ' + str(msg[0]) + ' : '
-                                                                    + msg[1])
+    print((f'unable to bind socket! error code: {str(msg[0])} : ' + msg[1]))
     sys.exit(2)
 
 try:
     sockfd.send(pkt)
 except socket.error as msg:
-    print('unable to send packet! error code: ' + str(msg[0]) + ' : '
-                                                                    + msg[1])
+    print((f'unable to send packet! error code: {str(msg[0])} : ' + msg[1]))
     sys.exit(2)
 
 print('send success!')

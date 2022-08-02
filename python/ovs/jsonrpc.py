@@ -81,13 +81,9 @@ class Message(object):
     def __validate_arg(self, value, name, must_have):
         if (value is not None) == (must_have != 0):
             return None
-        else:
-            type_name = Message.type_to_string(self.type)
-            if must_have:
-                verb = "must"
-            else:
-                verb = "must not"
-            return "%s %s have \"%s\"" % (type_name, verb, name)
+        type_name = Message.type_to_string(self.type)
+        verb = "must" if must_have else "must not"
+        return "%s %s have \"%s\"" % (type_name, verb, name)
 
     def is_valid(self):
         if self.params is not None and not isinstance(self.params, list):
@@ -98,7 +94,7 @@ class Message(object):
                    Message.T_REPLY: 0x00101,
                    Message.T_ERROR: 0x00011}.get(self.type)
         if pattern is None:
-            return "invalid JSON-RPC message type %s" % self.type
+            return f"invalid JSON-RPC message type {self.type}"
 
         return (
             self.__validate_arg(self.method, "method", pattern & 0x10000) or
@@ -140,10 +136,7 @@ class Message(object):
 
         msg = Message(msg_type, method, params, result, error, id_)
         validation_error = msg.is_valid()
-        if validation_error is not None:
-            return validation_error
-        else:
-            return msg
+        return validation_error if validation_error is not None else msg
 
     def to_json(self):
         json = {}
@@ -170,13 +163,13 @@ class Message(object):
         if self.method is not None:
             s.append("method=\"%s\"" % self.method)
         if self.params is not None:
-            s.append("params=" + ovs.json.to_string(self.params))
+            s.append(f"params={ovs.json.to_string(self.params)}")
         if self.result is not None:
-            s.append("result=" + ovs.json.to_string(self.result))
+            s.append(f"result={ovs.json.to_string(self.result)}")
         if self.error is not None:
-            s.append("error=" + ovs.json.to_string(self.error))
+            s.append(f"error={ovs.json.to_string(self.error)}")
         if self.id is not None:
-            s.append("id=" + ovs.json.to_string(self.id))
+            s.append(f"id={ovs.json.to_string(self.id)}")
         return ", ".join(s)
 
 
@@ -204,8 +197,7 @@ class Connection(object):
                 self.output = self.output[retval:]
             else:
                 if retval != -errno.EAGAIN:
-                    vlog.warn("%s: send error: %s" %
-                              (self.name, os.strerror(-retval)))
+                    vlog.warn(f"{self.name}: send error: {os.strerror(-retval)}")
                     self.error(-retval)
                 break
 
@@ -219,17 +211,14 @@ class Connection(object):
         return self.status
 
     def get_backlog(self):
-        if self.status != 0:
-            return 0
-        else:
-            return len(self.output)
+        return 0 if self.status != 0 else len(self.output)
 
     def get_received_bytes(self):
         return self.received_bytes
 
     def __log_msg(self, title, msg):
         if vlog.dbg_is_enabled():
-            vlog.dbg("%s: %s %s" % (self.name, title, msg))
+            vlog.dbg(f"{self.name}: {title} {msg}")
 
     def send(self, msg):
         if self.status:
@@ -244,8 +233,7 @@ class Connection(object):
         return self.status
 
     def send_block(self, msg):
-        error = self.send(msg)
-        if error:
+        if error := self.send(msg):
             return error
 
         while True:
@@ -281,12 +269,10 @@ class Connection(object):
                         error = errno.EAGAIN
                     if error == errno.EAGAIN:
                         return error, None
-                    else:
                         # XXX rate-limit
-                        vlog.warn("%s: receive error: %s"
-                                  % (self.name, os.strerror(error)))
-                        self.error(error)
-                        return self.status, None
+                    vlog.warn(f"{self.name}: receive error: {os.strerror(error)}")
+                    self.error(error)
+                    return self.status, None
                 elif not data:
                     self.error(EOF)
                     return EOF, None
@@ -302,11 +288,7 @@ class Connection(object):
                 else:
                     self.input = self.input[self.parser.feed(self.input):]
                 if self.parser.is_done():
-                    msg = self.__process_msg()
-                    if msg:
-                        return 0, msg
-                    else:
-                        return self.status, None
+                    return (0, msg) if (msg := self.__process_msg()) else (self.status, None)
 
     def recv_block(self):
         while True:
@@ -328,10 +310,11 @@ class Connection(object):
         reply = None
         while not error:
             error, reply = self.recv_block()
-            if (reply
-                and (reply.type == Message.T_REPLY
-                     or reply.type == Message.T_ERROR)
-                and reply.id == id_):
+            if (
+                reply
+                and reply.type in [Message.T_REPLY, Message.T_ERROR]
+                and reply.id == id_
+            ):
                 break
         return error, reply
 
@@ -340,15 +323,14 @@ class Connection(object):
         self.parser = None
         if isinstance(json, str):
             # XXX rate-limit
-            vlog.warn("%s: error parsing stream: %s" % (self.name, json))
+            vlog.warn(f"{self.name}: error parsing stream: {json}")
             self.error(errno.EPROTO)
             return
 
         msg = Message.from_json(json)
         if not isinstance(msg, Message):
             # XXX rate-limit
-            vlog.warn("%s: received bad JSON-RPC message: %s"
-                      % (self.name, msg))
+            vlog.warn(f"{self.name}: received bad JSON-RPC message: {msg}")
             self.error(errno.EPROTO)
             return
 
@@ -552,19 +534,13 @@ class Session(object):
         self.reconnect.wait(poller, ovs.timeval.msec())
 
     def get_backlog(self):
-        if self.rpc is not None:
-            return self.rpc.get_backlog()
-        else:
-            return 0
+        return self.rpc.get_backlog() if self.rpc is not None else 0
 
     def get_name(self):
         return self.reconnect.get_name()
 
     def send(self, msg):
-        if self.rpc is not None:
-            return self.rpc.send(msg)
-        else:
-            return errno.ENOTCONN
+        return self.rpc.send(msg) if self.rpc is not None else errno.ENOTCONN
 
     def recv(self):
         if self.rpc is not None:
@@ -585,10 +561,7 @@ class Session(object):
                 if msg.type == Message.T_REQUEST and msg.method == "echo":
                     # Echo request.  Send reply.
                     self.send(Message.create_reply(msg.params, msg.id))
-                elif msg.type == Message.T_REPLY and msg.id == "echo":
-                    # It's a reply to our echo request.  Suppress it.
-                    pass
-                else:
+                elif msg.type != Message.T_REPLY or msg.id != "echo":
                     return msg
         return None
 
@@ -599,9 +572,8 @@ class Session(object):
     def is_alive(self):
         if self.rpc is not None or self.stream is not None:
             return True
-        else:
-            max_tries = self.reconnect.get_max_tries()
-            return max_tries is None or max_tries > 0
+        max_tries = self.reconnect.get_max_tries()
+        return max_tries is None or max_tries > 0
 
     def is_connected(self):
         return self.rpc is not None

@@ -45,8 +45,7 @@ def sodepends(include_dirs, filenames, dst):
             if not line:
                 break
 
-            name = soutil.extract_include_directive(line)
-            if name:
+            if name := soutil.extract_include_directive(line):
                 if soutil.find_file(include_dirs, name):
                     dependencies.append(name)
                 else:

@@ -33,8 +33,7 @@ def _unixctl_help(conn, unused_argv, unused_aux):
     command_names = sorted(commands.keys())
     for name in command_names:
         reply += "  "
-        usage = commands[name].usage
-        if usage:
+        if usage := commands[name].usage:
             reply += "%-23s %s" % (name, usage)
         else:
             reply += name
@@ -74,13 +73,13 @@ def socket_name_from_target(target):
     if target.startswith('/') or target.find(':') > -1:
         return 0, target
 
-    pidfile_name = "%s/%s.pid" % (ovs.dirs.RUNDIR, target)
+    pidfile_name = f"{ovs.dirs.RUNDIR}/{target}.pid"
     pid = ovs.daemon.read_pidfile(pidfile_name)
     if pid < 0:
         return -pid, "cannot read pidfile \"%s\"" % pidfile_name
 
     if sys.platform == "win32":
-        return 0, "%s/%s.ctl" % (ovs.dirs.RUNDIR, target)
+        return 0, f"{ovs.dirs.RUNDIR}/{target}.ctl"
     else:
         return 0, "%s/%s.%d.ctl" % (ovs.dirs.RUNDIR, target, pid)
 

@@ -42,8 +42,7 @@ def stream_or_pstream_needs_probes(name):
     long time to notice the connection was dropped.  Returns False if probes
     aren't needed, and None if 'name' is invalid"""
 
-    cls = Stream._find_method(name)
-    if cls:
+    if cls := Stream._find_method(name):
         return cls.needs_probes()
     elif PassiveStream.is_valid_name(name):
         return PassiveStream.needs_probes(name)
@@ -80,14 +79,18 @@ class Stream(object):
 
     @staticmethod
     def register_method(method, cls):
-        Stream._SOCKET_METHODS[method + ":"] = cls
+        Stream._SOCKET_METHODS[f"{method}:"] = cls
 
     @staticmethod
     def _find_method(name):
-        for method, cls in Stream._SOCKET_METHODS.items():
-            if name.startswith(method):
-                return cls
-        return None
+        return next(
+            (
+                cls
+                for method, cls in Stream._SOCKET_METHODS.items()
+                if name.startswith(method)
+            ),
+            None,
+        )
 
     @staticmethod
     def is_valid_name(name):
@@ -192,16 +195,15 @@ class Stream(object):
         error, sock = cls._open(suffix, dscp)
         if error:
             return error, None
+        err = cls.check_connection_completion(sock)
+        if err in [errno.EAGAIN, errno.EINPROGRESS]:
+            status = errno.EAGAIN
+            err = 0
+        elif err == 0:
+            status = 0
         else:
-            err = cls.check_connection_completion(sock)
-            if err == errno.EAGAIN or err == errno.EINPROGRESS:
-                status = errno.EAGAIN
-                err = 0
-            elif err == 0:
-                status = 0
-            else:
-                status = err
-            return err, cls(sock, name, status)
+            status = err
+        return err, cls(sock, name, status)
 
     @staticmethod
     def _open(suffix, dscp):
@@ -488,18 +490,16 @@ class Stream(object):
                                          self._wevent,
                                          mask)
             except pywintypes.error as e:
-                vlog.err("failed to associate events with socket: %s"
-                         % e.strerror)
+                vlog.err(f"failed to associate events with socket: {e.strerror}")
             poller.fd_wait(self._wevent, event)
-        else:
-            if wait == Stream.W_RECV:
-                if self._read:
-                    poller.fd_wait(self._read.hEvent, ovs.poller.POLLIN)
-            elif wait == Stream.W_SEND:
-                if self._write:
-                    poller.fd_wait(self._write.hEvent, ovs.poller.POLLOUT)
-            elif wait == Stream.W_CONNECT:
-                return
+        elif wait == Stream.W_RECV:
+            if self._read:
+                poller.fd_wait(self._read.hEvent, ovs.poller.POLLIN)
+        elif wait == Stream.W_SEND:
+            if self._write:
+                poller.fd_wait(self._write.hEvent, ovs.poller.POLLOUT)
+        elif wait == Stream.W_CONNECT:
+            return
 
     def connect_wait(self, poller):
         self.wait(poller, Stream.W_CONNECT)
@@ -543,7 +543,7 @@ class PassiveStream(object):
 
     @staticmethod
     def needs_probes(name):
-        return False if name.startswith("punix:") else True
+        return not name.startswith("punix:")
 
     @staticmethod
     def is_valid_name(name):
@@ -600,9 +600,11 @@ class PassiveStream(object):
                     return errno.ENOENT, None
 
                 npipe = winutils.create_named_pipe(pipename)
-                if not npipe:
-                    return errno.ENOENT, None
-                return 0, PassiveStream(None, name, bind_path, pipe=npipe)
+                return (
+                    (0, PassiveStream(None, name, bind_path, pipe=npipe))
+                    if npipe
+                    else (errno.ENOENT, None)
+                )
 
         elif name.startswith("ptcp:"):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -616,7 +618,7 @@ class PassiveStream(object):
         try:
             sock.listen(10)
         except socket.error as e:
-            vlog.err("%s: listen: %s" % (name, os.strerror(e.error)))
+            vlog.err(f"{name}: listen: {os.strerror(e.error)}")
             sock.close()
             return e.error, None
 
@@ -648,9 +650,8 @@ class PassiveStream(object):
                 sock, addr = self.socket.accept()
                 ovs.socket_util.set_nonblocking(sock)
                 if (sys.platform != 'win32' and sock.family == socket.AF_UNIX):
-                    return 0, Stream(sock, "unix:%s" % addr, 0)
-                return 0, Stream(sock, 'ptcp:%s:%s' % (addr[0],
-                                                       str(addr[1])), 0)
+                    return 0, Stream(sock, f"unix:{addr}", 0)
+                return 0, Stream(sock, f'ptcp:{addr[0]}:{str(addr[1])}', 0)
             except socket.error as e:
                 error = ovs.socket_util.get_exception_errno(e)
                 if sys.platform == 'win32' and error == errno.WSAEWOULDBLOCK:
@@ -659,7 +660,7 @@ class PassiveStream(object):
                     error = errno.EAGAIN
                 if error != errno.EAGAIN:
                     # XXX rate-limit
-                    vlog.dbg("accept: %s" % os.strerror(error))
+                    vlog.dbg(f"accept: {os.strerror(error)}")
                 return error, None
 
     def __accept_windows(self):
@@ -677,8 +678,7 @@ class PassiveStream(object):
                     return errno.EINVAL, None
             self.connect_pending = False
 
-        error = winutils.connect_named_pipe(self.pipe, self.connect)
-        if error:
+        if error := winutils.connect_named_pipe(self.pipe, self.connect):
             if error == winutils.winerror.ERROR_IO_PENDING:
                 self.connect_pending = True
                 return errno.EAGAIN, None
@@ -801,9 +801,7 @@ class SSLStream(Stream):
         return error, ssl_sock
 
     def connect(self):
-        retval = super(SSLStream, self).connect()
-
-        if retval:
+        if retval := super(SSLStream, self).connect():
             return retval
 
         # TCP Connection is successful. Now do the SSL handshake

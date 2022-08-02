@@ -52,9 +52,10 @@ class UnixctlConnection(object):
                     self._process_command(msg)
                 else:
                     # XXX: rate-limit
-                    vlog.warn("%s: received unexpected %s message"
-                              % (self._rpc.name,
-                                 Message.type_to_string(msg.type)))
+                    vlog.warn(
+                        f"{self._rpc.name}: received unexpected {Message.type_to_string(msg.type)} message"
+                    )
+
                     error = errno.EINVAL
 
             if not error:
@@ -112,10 +113,10 @@ class UnixctlConnection(object):
             error = '"%s" is not a valid command' % method
         elif len(params) < command.min_args:
             error = '"%s" command requires at least %d arguments' \
-                    % (method, command.min_args)
+                        % (method, command.min_args)
         elif len(params) > command.max_args:
             error = '"%s" command takes at most %d arguments' \
-                    % (method, command.max_args)
+                        % (method, command.max_args)
         else:
             for param in params:
                 if not isinstance(param, str):
@@ -132,7 +133,7 @@ class UnixctlConnection(object):
 
 def _unixctl_version(conn, unused_argv, version):
     assert isinstance(conn, UnixctlConnection)
-    version = "%s (Open vSwitch) %s" % (ovs.util.PROGRAM_NAME, version)
+    version = f"{ovs.util.PROGRAM_NAME} (Open vSwitch) {version}"
     conn.reply(version)
 
 
@@ -156,8 +157,7 @@ class UnixctlServer(object):
                 break
             else:
                 # XXX: rate-limit
-                vlog.warn("%s: accept failed: %s" % (self._listener.name,
-                                                     os.strerror(error)))
+                vlog.warn(f"{self._listener.name}: accept failed: {os.strerror(error)}")
 
         for conn in copy.copy(self._conns):
             error = conn.run()
@@ -188,23 +188,20 @@ class UnixctlServer(object):
         assert path is None or isinstance(path, str)
 
         if path is not None:
-            path = "punix:%s" % ovs.util.abs_file_name(ovs.dirs.RUNDIR, path)
+            path = f"punix:{ovs.util.abs_file_name(ovs.dirs.RUNDIR, path)}"
+        elif sys.platform == "win32":
+            path = f"punix:{ovs.dirs.RUNDIR}/{ovs.util.PROGRAM_NAME}.ctl"
         else:
-            if sys.platform == "win32":
-                path = "punix:%s/%s.ctl" % (ovs.dirs.RUNDIR,
-                                            ovs.util.PROGRAM_NAME)
-            else:
-                path = "punix:%s/%s.%d.ctl" % (ovs.dirs.RUNDIR,
-                                               ovs.util.PROGRAM_NAME,
-                                               os.getpid())
+            path = "punix:%s/%s.%d.ctl" % (ovs.dirs.RUNDIR,
+                                           ovs.util.PROGRAM_NAME,
+                                           os.getpid())
 
         if version is None:
             version = ovs.version.VERSION
 
         error, listener = ovs.stream.PassiveStream.open(path)
         if error:
-            ovs.util.ovs_error(error, "could not initialize control socket %s"
-                               % path)
+            ovs.util.ovs_error(error, f"could not initialize control socket {path}")
             return error, None
 
         ovs.unixctl.command_register("version", "", 0, 0, _unixctl_version,
@@ -228,15 +225,13 @@ class UnixctlClient(object):
         error, reply = self._conn.transact_block(request)
 
         if error:
-            vlog.warn("error communicating with %s: %s"
-                      % (self._conn.name, os.strerror(error)))
+            vlog.warn(f"error communicating with {self._conn.name}: {os.strerror(error)}")
             return error, None, None
 
         if reply.error is not None:
             return 0, str(reply.error), None
-        else:
-            assert reply.result is not None
-            return 0, None, str(reply.result)
+        assert reply.result is not None
+        return 0, None, str(reply.result)
 
     def close(self):
         self._conn.close()
@@ -246,12 +241,12 @@ class UnixctlClient(object):
     def create(path):
         assert isinstance(path, str)
 
-        unix = "unix:%s" % ovs.util.abs_file_name(ovs.dirs.RUNDIR, path)
+        unix = f"unix:{ovs.util.abs_file_name(ovs.dirs.RUNDIR, path)}"
         error, stream = ovs.stream.Stream.open_block(
             ovs.stream.Stream.open(unix))
 
         if error:
-            vlog.warn("failed to connect to %s" % path)
+            vlog.warn(f"failed to connect to {path}")
             return error, None
 
         return 0, UnixctlClient(ovs.jsonrpc.Connection(stream))

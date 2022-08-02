@@ -26,11 +26,13 @@ class MultiColumnIndex(object):
         self.clear()
 
     def __repr__(self):
-        return "{}(name={})".format(self.__class__.__name__, self.name)
+        return f"{self.__class__.__name__}(name={self.name})"
 
     def __str__(self):
-        return repr(self) + " columns={} values={}".format(
-            self.columns, [str(v) for v in self.values])
+        return (
+            repr(self)
+            + f" columns={self.columns} values={[str(v) for v in self.values]}"
+        )
 
     def add_column(self, column, direction=OVSDB_INDEX_ASC, key=None):
         self.columns.append(ColumnIndex(column, direction,
@@ -86,7 +88,7 @@ class IndexedRows(DictBase, object):
 
     def index_create(self, name):
         if name in self.indexes:
-            raise ValueError("An index named {} already exists".format(name))
+            raise ValueError(f"An index named {name} already exists")
         index = self.indexes[name] = MultiColumnIndex(name)
         return index
 

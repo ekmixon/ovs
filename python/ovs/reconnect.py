@@ -180,10 +180,7 @@ class Reconnect(object):
 
         This setting has no effect on the log level of debugging, warning, or
         error messages."""
-        if quiet:
-            self.info_level = vlog.dbg
-        else:
-            self.info_level = vlog.info
+        self.info_level = vlog.dbg if quiet else vlog.info
 
     def get_name(self):
         return self.name
@@ -193,10 +190,7 @@ class Reconnect(object):
         is used instead.
 
         The name is used in log messages."""
-        if name is None:
-            self.name = "void"
-        else:
-            self.name = name
+        self.name = "void" if name is None else name
 
     def get_min_backoff(self):
         """Return the minimum number of milliseconds to back off between
@@ -239,10 +233,7 @@ class Reconnect(object):
         'min_backoff' must be at least 1000, and 'max_backoff' must be greater
         than or equal to 'min_backoff'."""
         self.min_backoff = max(min_backoff, 1000)
-        if self.max_backoff:
-            self.max_backoff = max(max_backoff, 1000)
-        else:
-            self.max_backoff = 8000
+        self.max_backoff = max(max_backoff, 1000) if self.max_backoff else 8000
         if self.min_backoff > self.max_backoff:
             self.max_backoff = self.min_backoff
 
@@ -267,10 +258,7 @@ class Reconnect(object):
 
         If 'probe_interval' is nonzero, then it will be forced to a value of at
         least 1000 ms."""
-        if probe_interval:
-            self.probe_interval = max(1000, probe_interval)
-        else:
-            self.probe_interval = 0
+        self.probe_interval = max(1000, probe_interval) if probe_interval else 0
 
     def is_passive(self):
         """Returns true if 'fsm' is in passive mode, false if 'fsm' is in
@@ -333,80 +321,64 @@ class Reconnect(object):
         error.
 
         The FSM will back off, then reconnect."""
-        if self.state not in (Reconnect.Backoff, Reconnect.Void):
+        if self.state in (Reconnect.Backoff, Reconnect.Void):
+            return
             # Report what happened
-            if self.state in (Reconnect.Active, Reconnect.Idle):
-                if error > 0:
-                    vlog.warn("%s: connection dropped (%s)"
-                              % (self.name, os.strerror(error)))
-                elif error == EOF:
-                    self.info_level("%s: connection closed by peer"
-                                    % self.name)
-                else:
-                    self.info_level("%s: connection dropped" % self.name)
-            elif self.state == Reconnect.Listening:
-                if error > 0:
-                    vlog.warn("%s: error listening for connections (%s)"
-                              % (self.name, os.strerror(error)))
-                else:
-                    self.info_level("%s: error listening for connections"
-                                    % self.name)
-            elif self.state == Reconnect.Reconnect:
-                self.info_level("%s: connection closed by client"
-                                % self.name)
-            elif self.backoff < self.max_backoff:
-                if self.passive:
-                    type_ = "listen"
-                else:
-                    type_ = "connection"
-                if error > 0:
-                    vlog.warn("%s: %s attempt failed (%s)"
-                              % (self.name, type_, os.strerror(error)))
-                else:
-                    self.info_level("%s: %s attempt timed out"
-                                    % (self.name, type_))
+        if self.state in (Reconnect.Active, Reconnect.Idle):
+            if error > 0:
+                vlog.warn(f"{self.name}: connection dropped ({os.strerror(error)})")
+            elif error == EOF:
+                self.info_level(f"{self.name}: connection closed by peer")
+            else:
+                self.info_level(f"{self.name}: connection dropped")
+        elif self.state == Reconnect.Listening:
+            if error > 0:
+                vlog.warn(
+                    f"{self.name}: error listening for connections ({os.strerror(error)})"
+                )
 
-            if (self.state in (Reconnect.Active, Reconnect.Idle)):
-                self.last_disconnected = now
+            else:
+                self.info_level(f"{self.name}: error listening for connections")
+        elif self.state == Reconnect.Reconnect:
+            self.info_level(f"{self.name}: connection closed by client")
+        elif self.backoff < self.max_backoff:
+            type_ = "listen" if self.passive else "connection"
+            if error > 0:
+                vlog.warn(f"{self.name}: {type_} attempt failed ({os.strerror(error)})")
+            else:
+                self.info_level(f"{self.name}: {type_} attempt timed out")
 
-            if not self.__may_retry():
-                self._transition(now, Reconnect.Void)
-                return
+        if (self.state in (Reconnect.Active, Reconnect.Idle)):
+            self.last_disconnected = now
+
+        if not self.__may_retry():
+            self._transition(now, Reconnect.Void)
+            return
 
             # Back off
-            if self.backoff_free_tries > 1:
-                self.backoff_free_tries -= 1
-                self.backoff = 0
-            elif (self.state in (Reconnect.Active, Reconnect.Idle) and
+        if self.backoff_free_tries > 1:
+            self.backoff_free_tries -= 1
+            self.backoff = 0
+        elif (self.state in (Reconnect.Active, Reconnect.Idle) and
                 (self.last_activity - self.last_connected >= self.backoff or
                  self.passive)):
-                if self.passive:
-                    self.backoff = 0
-                else:
-                    self.backoff = self.min_backoff
-            else:
-                if self.backoff < self.min_backoff:
-                    self.backoff = self.min_backoff
-                elif self.backoff < self.max_backoff / 2:
-                    self.backoff *= 2
-                    if self.passive:
-                        action = "trying to listen again"
-                    else:
-                        action = "reconnect"
-                    self.info_level("%s: waiting %.3g seconds before %s"
-                                    % (self.name, self.backoff / 1000.0,
-                                       action))
-                else:
-                    if self.backoff < self.max_backoff:
-                        if self.passive:
-                            action = "try to listen"
-                        else:
-                            action = "reconnect"
-                        self.info_level("%s: continuing to %s in the "
-                                        "background but suppressing further "
-                                        "logging" % (self.name, action))
-                    self.backoff = self.max_backoff
-            self._transition(now, Reconnect.Backoff)
+            self.backoff = 0 if self.passive else self.min_backoff
+        elif self.backoff < self.min_backoff:
+            self.backoff = self.min_backoff
+        elif self.backoff < self.max_backoff / 2:
+            self.backoff *= 2
+            action = "trying to listen again" if self.passive else "reconnect"
+            self.info_level("%s: waiting %.3g seconds before %s"
+                            % (self.name, self.backoff / 1000.0,
+                               action))
+        else:
+            if self.backoff < self.max_backoff:
+                action = "try to listen" if self.passive else "reconnect"
+                self.info_level("%s: continuing to %s in the "
+                                "background but suppressing further "
+                                "logging" % (self.name, action))
+            self.backoff = self.max_backoff
+        self._transition(now, Reconnect.Backoff)
 
     def connecting(self, now):
         """Tell this FSM that a connection or listening attempt is in progress.
@@ -416,9 +388,9 @@ class Reconnect(object):
         self.run())."""
         if self.state != Reconnect.ConnectInProgress:
             if self.passive:
-                self.info_level("%s: listening..." % self.name)
+                self.info_level(f"{self.name}: listening...")
             elif self.backoff < self.max_backoff:
-                self.info_level("%s: connecting..." % self.name)
+                self.info_level(f"{self.name}: connecting...")
             self._transition(now, Reconnect.ConnectInProgress)
 
     def listening(self, now):
@@ -435,7 +407,7 @@ class Reconnect(object):
         return ovs.reconnect.CONNECT from self.run() to tell the client to try
         listening again."""
         if self.state != Reconnect.Listening:
-            self.info_level("%s: listening..." % self.name)
+            self.info_level(f"{self.name}: listening...")
             self._transition(now, Reconnect.Listening)
 
     def listen_error(self, now, error):
@@ -460,7 +432,7 @@ class Reconnect(object):
         if not self.state.is_connected:
             self.connecting(now)
 
-            self.info_level("%s: connected" % self.name)
+            self.info_level(f"{self.name}: connected")
             self._transition(now, Reconnect.Active)
             self.last_connected = now
 
@@ -502,7 +474,7 @@ class Reconnect(object):
                 self.total_connected_duration += now - self.last_connected
             self.seqno += 1
 
-        vlog.dbg("%s: entering %s" % (self.name, state.name))
+        vlog.dbg(f"{self.name}: entering {state.name}")
         self.state = state
         self.state_entered = now
 
@@ -579,18 +551,12 @@ class Reconnect(object):
     def get_last_connect_elapsed(self, now):
         """Returns the number of milliseconds since 'fsm' was last connected
         to its peer. Returns None if never connected."""
-        if self.last_connected:
-            return now - self.last_connected
-        else:
-            return None
+        return now - self.last_connected if self.last_connected else None
 
     def get_last_disconnect_elapsed(self, now):
         """Returns the number of milliseconds since 'fsm' was last disconnected
         from its peer. Returns None if never disconnected."""
-        if self.last_disconnected:
-            return now - self.last_disconnected
-        else:
-            return None
+        return now - self.last_disconnected if self.last_disconnected else None
 
     def get_stats(self, now):
         class Stats(object):

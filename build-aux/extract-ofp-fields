@@ -16,7 +16,7 @@ VERSION = {"1.0": 0x01,
            "1.3": 0x04,
            "1.4": 0x05,
            "1.5": 0x06}
-VERSION_REVERSE = dict((v,k) for k, v in VERSION.items())
+VERSION_REVERSE = {v: k for k, v in VERSION.items()}
 
 TYPES = {"u8":       (1,   False),
          "be16":     (2,   False),
@@ -142,12 +142,10 @@ file to #include.\
 
 
 def make_sizeof(s):
-    m = re.match(r'(.*) up to (.*)', s)
-    if m:
-        struct, member = m.groups()
-        return "offsetof(%s, %s)" % (struct, member)
-    else:
-        return "sizeof(%s)" % s
+    if not (m := re.match(r'(.*) up to (.*)', s)):
+        return f"sizeof({s})"
+    struct, member = m.groups()
+    return f"offsetof({struct}, {member})"
 
 
 def parse_oxms(s, prefix, n_bytes):
@@ -157,7 +155,7 @@ def parse_oxms(s, prefix, n_bytes):
     return tuple(parse_oxm(s2.strip(), prefix, n_bytes) for s2 in s.split(','))
 
 
-match_types = dict()
+match_types = {}
 
 
 def parse_oxm(s, prefix, n_bytes):
@@ -165,21 +163,23 @@ def parse_oxm(s, prefix, n_bytes):
 
     m = re.match('([A-Z0-9_]+)\(([0-9]+)\) since(?: OF(1\.[0-9]+) and)? v([12]\.[0-9]+)$', s)
     if not m:
-        fatal("%s: syntax error parsing %s" % (s, prefix))
+        fatal(f"{s}: syntax error parsing {prefix}")
 
     name, oxm_type, of_version, ovs_version = m.groups()
 
     class_ = oxm_name_to_class(name)
     if class_ is None:
-        fatal("unknown OXM class for %s" % name)
+        fatal(f"unknown OXM class for {name}")
     oxm_vendor, oxm_class, oxm_class_type = class_
 
     if class_ in match_types:
         if oxm_type in match_types[class_]:
-            fatal("duplicate match type for %s (conflicts with %s)" %
-                  (name, match_types[class_][oxm_type]))
+            fatal(
+                f"duplicate match type for {name} (conflicts with {match_types[class_][oxm_type]})"
+            )
+
     else:
-        match_types[class_] = dict()
+        match_types[class_] = {}
     match_types[class_][oxm_type] = name
 
     # Normally the oxm_length is the size of the field, but for experimenter
@@ -194,13 +194,13 @@ def parse_oxm(s, prefix, n_bytes):
         if oxm_class_type == 'extension':
             fatal("%s: OXM extension can't have OpenFlow version" % name)
         if of_version not in VERSION:
-            fatal("%s: unknown OpenFlow version %s" % (name, of_version))
+            fatal(f"{name}: unknown OpenFlow version {of_version}")
         of_version_nr = VERSION[of_version]
         if of_version_nr < VERSION['1.2']:
-            fatal("%s: claimed version %s predates OXM" % (name, of_version))
+            fatal(f"{name}: claimed version {of_version} predates OXM")
     else:
         if oxm_class_type == 'standard':
-            fatal("%s: missing OpenFlow version number" % name)
+            fatal(f"{name}: missing OpenFlow version number")
         of_version_nr = 0
 
     return (header, name, of_version_nr, ovs_version)
@@ -212,7 +212,7 @@ def parse_field(mff, comment):
     # First line of comment is the field name.
     m = re.match(r'"([^"]+)"(?:\s+\(aka "([^"]+)"\))?(?:\s+\(.*\))?\.', comment[0])
     if not m:
-        fatal("%s lacks field name" % mff)
+        fatal(f"{mff} lacks field name")
     f['name'], f['extra_name'] = m.groups()
 
     # Find the last blank line the comment.  The field definitions
@@ -222,41 +222,51 @@ def parse_field(mff, comment):
         if not comment[i]:
             blank = i
     if not blank:
-        fatal("%s: missing blank line in comment" % mff)
+        fatal(f"{mff}: missing blank line in comment")
 
-    d = {}
-    for key in ("Type", "Maskable", "Formatting", "Prerequisites",
-                "Access", "Prefix lookup member",
-                "OXM", "NXM", "OF1.0", "OF1.1"):
-        d[key] = None
+    d = {
+        key: None
+        for key in (
+            "Type",
+            "Maskable",
+            "Formatting",
+            "Prerequisites",
+            "Access",
+            "Prefix lookup member",
+            "OXM",
+            "NXM",
+            "OF1.0",
+            "OF1.1",
+        )
+    }
+
     for fline in comment[blank + 1:]:
         m = re.match(r'([^:]+):\s+(.*)\.$', fline)
         if not m:
-            fatal("%s: syntax error parsing key-value pair as part of %s"
-                  % (fline, mff))
+            fatal(f"{fline}: syntax error parsing key-value pair as part of {mff}")
         key, value = m.groups()
         if key not in d:
-            fatal("%s: unknown key" % key)
+            fatal(f"{key}: unknown key")
         elif key == 'Code point':
             d[key] += [value]
         elif d[key] is not None:
-            fatal("%s: duplicate key" % key)
+            fatal(f"{key}: duplicate key")
         d[key] = value
     for key, value in d.items():
         if not value and key not in ("OF1.0", "OF1.1",
                                      "Prefix lookup member", "Notes"):
-            fatal("%s: missing %s" % (mff, key))
+            fatal(f"{mff}: missing {key}")
 
     m = re.match(r'([a-zA-Z0-9]+)(?: \(low ([0-9]+) bits\))?$', d['Type'])
     if not m:
-        fatal("%s: syntax error in type" % mff)
-    type_ = m.group(1)
+        fatal(f"{mff}: syntax error in type")
+    type_ = m[1]
     if type_ not in TYPES:
-        fatal("%s: unknown type %s" % (mff, d['Type']))
+        fatal(f"{mff}: unknown type {d['Type']}")
 
     f['n_bytes'] = TYPES[type_][0]
-    if m.group(2):
-        f['n_bits'] = int(m.group(2))
+    if m[2]:
+        f['n_bits'] = int(m[2])
         if f['n_bits'] > f['n_bytes'] * 8:
             fatal("%s: more bits (%d) than field size (%d)"
                   % (mff, f['n_bits'], 8 * f['n_bytes']))
@@ -269,11 +279,11 @@ def parse_field(mff, comment):
     elif d['Maskable'] == 'bitwise':
         f['mask'] = 'MFM_FULLY'
     else:
-        fatal("%s: unknown maskable %s" % (mff, d['Maskable']))
+        fatal(f"{mff}: unknown maskable {d['Maskable']}")
 
     fmt = FORMATTING.get(d['Formatting'])
     if not fmt:
-        fatal("%s: unknown format %s" % (mff, d['Formatting']))
+        fatal(f"{mff}: unknown format {d['Formatting']}")
     f['formatting'] = d['Formatting']
     if f['n_bytes'] < fmt[1] or f['n_bytes'] > fmt[2]:
         fatal("%s: %d-byte field can't be formatted as %s"
@@ -282,22 +292,22 @@ def parse_field(mff, comment):
 
     f['prereqs'] = d['Prerequisites']
     if f['prereqs'] not in PREREQS:
-        fatal("%s: unknown prerequisites %s" % (mff, d['Prerequisites']))
+        fatal(f"{mff}: unknown prerequisites {d['Prerequisites']}")
 
     if d['Access'] == 'read-only':
         f['writable'] = False
     elif d['Access'] == 'read/write':
         f['writable'] = True
     else:
-        fatal("%s: unknown access %s" % (mff, d['Access']))
+        fatal(f"{mff}: unknown access {d['Access']}")
 
     f['OF1.0'] = d['OF1.0']
-    if not d['OF1.0'] in (None, 'exact match', 'CIDR mask'):
-        fatal("%s: unknown OF1.0 match type %s" % (mff, d['OF1.0']))
+    if d['OF1.0'] not in (None, 'exact match', 'CIDR mask'):
+        fatal(f"{mff}: unknown OF1.0 match type {d['OF1.0']}")
 
     f['OF1.1'] = d['OF1.1']
-    if not d['OF1.1'] in (None, 'exact match', 'bitwise mask'):
-        fatal("%s: unknown OF1.1 match type %s" % (mff, d['OF1.1']))
+    if d['OF1.1'] not in (None, 'exact match', 'bitwise mask'):
+        fatal(f"{mff}: unknown OF1.1 match type {d['OF1.1']}")
 
     f['OXM'] = (parse_oxms(d['OXM'], 'OXM', f['n_bytes']) +
                 parse_oxms(d['NXM'], 'NXM', f['n_bytes']))
@@ -308,11 +318,11 @@ def parse_field(mff, comment):
 
 
 def protocols_to_c(protocols):
-    if protocols == set(['of10', 'of11', 'oxm']):
+    if protocols == {'of10', 'of11', 'oxm'}:
         return 'OFPUTIL_P_ANY'
-    elif protocols == set(['of11', 'oxm']):
+    elif protocols == {'of11', 'oxm'}:
         return 'OFPUTIL_P_NXM_OF11_UP'
-    elif protocols == set(['oxm']):
+    elif protocols == {'oxm'}:
         return 'OFPUTIL_P_NXM_OXM_ANY'
     elif protocols == set([]):
         return 'OFPUTIL_P_NONE'
@@ -330,24 +340,20 @@ def make_meta_flow(meta_flow_h):
     output = autogen_c_comment()
     for f in fields:
         output += ["{"]
-        output += ["    %s," % f['mff']]
+        output += [f"    {f['mff']},"]
         if f['extra_name']:
             output += ["    \"%s\", \"%s\"," % (f['name'], f['extra_name'])]
         else:
             output += ["    \"%s\", NULL," % f['name']]
 
-        if f['variable']:
-            variable = 'true'
-        else:
-            variable = 'false'
+        variable = 'true' if f['variable'] else 'false'
         output += ["    %d, %d, %s," % (f['n_bytes'], f['n_bits'], variable)]
 
-        if f['writable']:
-            rw = 'true'
-        else:
-            rw = 'false'
-        output += ["    %s, %s, %s, %s, false,"
-                   % (f['mask'], f['string'], PREREQS[f['prereqs']], rw)]
+        rw = 'true' if f['writable'] else 'false'
+        output += [
+            f"    {f['mask']}, {f['string']}, {PREREQS[f['prereqs']]}, {rw}, false,"
+        ]
+
 
         oxm = f['OXM']
         of10 = f['OF1.0']
@@ -357,31 +363,31 @@ def make_meta_flow(meta_flow_h):
             # OF1.1, nor do they have NXM or OXM assignments, but their
             # meanings can be expressed in every protocol, which is the goal of
             # this member.
-            protocols = set(["of10", "of11", "oxm"])
+            protocols = {"of10", "of11", "oxm"}
         else:
             protocols = set([])
             if of10:
-                protocols |= set(["of10"])
+                protocols |= {"of10"}
             if of11:
-                protocols |= set(["of11"])
+                protocols |= {"of11"}
             if oxm:
-                protocols |= set(["oxm"])
+                protocols |= {"oxm"}
 
         if f['mask'] == 'MFM_FULLY':
             cidr_protocols = protocols.copy()
             bitwise_protocols = protocols.copy()
 
-            if of10 == 'exact match':
-                bitwise_protocols -= set(['of10'])
-                cidr_protocols -= set(['of10'])
-            elif of10 == 'CIDR mask':
-                bitwise_protocols -= set(['of10'])
+            if of10 == 'CIDR mask':
+                bitwise_protocols -= {'of10'}
+            elif of10 == 'exact match':
+                bitwise_protocols -= {'of10'}
+                cidr_protocols -= {'of10'}
             else:
                 assert of10 is None
 
             if of11 == 'exact match':
-                bitwise_protocols -= set(['of11'])
-                cidr_protocols -= set(['of11'])
+                bitwise_protocols -= {'of11'}
+                cidr_protocols -= {'of11'}
             else:
                 assert of11 in (None, 'bitwise mask')
         else:
@@ -389,12 +395,12 @@ def make_meta_flow(meta_flow_h):
             cidr_protocols = set([])
             bitwise_protocols = set([])
 
-        output += ["    %s," % protocols_to_c(protocols)]
-        output += ["    %s," % protocols_to_c(cidr_protocols)]
-        output += ["    %s," % protocols_to_c(bitwise_protocols)]
+        output += [f"    {protocols_to_c(protocols)},"]
+        output += [f"    {protocols_to_c(cidr_protocols)},"]
+        output += [f"    {protocols_to_c(bitwise_protocols)},"]
 
         if f['prefix']:
-            output += ["    FLOW_U32OFS(%s)," % f['prefix']]
+            output += [f"    FLOW_U32OFS({f['prefix']}),"]
         else:
             output += ["    -1, /* not usable for prefix lookup */"]
 
@@ -425,108 +431,104 @@ def extract_ofp_fields(fn):
     global line
 
     file_name = fn
-    input_file = open(file_name)
-    line_number = 0
+    with open(file_name) as input_file:
+        line_number = 0
 
-    fields = []
+        fields = []
 
-    while True:
-        get_line()
-        if re.match('enum.*mf_field_id', line):
-            break
-
-    while True:
-        get_line()
-        first_line_number = line_number
-        here = '%s:%d' % (file_name, line_number)
-        if (line.startswith('/*')
-            or line.startswith(' *')
-            or line.startswith('#')
-            or not line
-            or line.isspace()):
-            continue
-        elif re.match('}', line) or re.match('\s+MFF_N_IDS', line):
-            break
-
-        # Parse the comment preceding an MFF_ constant into 'comment',
-        # one line to an array element.
-        line = line.strip()
-        if not line.startswith('/*'):
-            fatal("unexpected syntax between fields")
-        line = line[1:]
-        comment = []
-        end = False
-        while not end:
-            line = line.strip()
-            if line.startswith('*/'):
-                get_line()
-                break
-            if not line.startswith('*'):
-                fatal("unexpected syntax within field")
-
-            line = line[1:]
-            if line.startswith(' '):
-                line = line[1:]
-            if line.startswith(' ') and comment:
-                continuation = True
-                line = line.lstrip()
-            else:
-                continuation = False
-
-            if line.endswith('*/'):
-                line = line[:-2].rstrip()
-                end = True
-            else:
-                end = False
-
-            if continuation:
-                comment[-1] += " " + line
-            else:
-                comment += [line]
-            get_line()
-
-        # Drop blank lines at each end of comment.
-        while comment and not comment[0]:
-            comment = comment[1:]
-        while comment and not comment[-1]:
-            comment = comment[:-1]
-
-        # Parse the MFF_ constant(s).
-        mffs = []
         while True:
-            m = re.match('\s+(MFF_[A-Z0-9_]+),?\s?$', line)
-            if not m:
-                break
-            mffs += [m.group(1)]
             get_line()
-        if not mffs:
-            fatal("unexpected syntax looking for MFF_ constants")
+            if re.match('enum.*mf_field_id', line):
+                break
 
-        if len(mffs) > 1 or '<N>' in comment[0]:
-            for mff in mffs:
-                # Extract trailing integer.
-                m = re.match('.*[^0-9]([0-9]+)$', mff)
+        first_line_number = line_number
+        while True:
+            get_line()
+            here = '%s:%d' % (file_name, line_number)
+            if (line.startswith('/*')
+                or line.startswith(' *')
+                or line.startswith('#')
+                or not line
+                or line.isspace()):
+                continue
+            elif re.match('}', line) or re.match('\s+MFF_N_IDS', line):
+                break
+
+            # Parse the comment preceding an MFF_ constant into 'comment',
+            # one line to an array element.
+            line = line.strip()
+            if not line.startswith('/*'):
+                fatal("unexpected syntax between fields")
+            line = line[1:]
+            comment = []
+            end = False
+            while not end:
+                line = line.strip()
+                if line.startswith('*/'):
+                    get_line()
+                    break
+                if not line.startswith('*'):
+                    fatal("unexpected syntax within field")
+
+                line = line[1:]
+                if line.startswith(' '):
+                    line = line[1:]
+                if line.startswith(' ') and comment:
+                    continuation = True
+                    line = line.lstrip()
+                else:
+                    continuation = False
+
+                if line.endswith('*/'):
+                    line = line[:-2].rstrip()
+                    end = True
+                else:
+                    end = False
+
+                if continuation:
+                    comment[-1] += f" {line}"
+                else:
+                    comment += [line]
+                get_line()
+
+            # Drop blank lines at each end of comment.
+            while comment and not comment[0]:
+                comment = comment[1:]
+            while comment and not comment[-1]:
+                comment = comment[:-1]
+
+            # Parse the MFF_ constant(s).
+            mffs = []
+            while True:
+                m = re.match('\s+(MFF_[A-Z0-9_]+),?\s?$', line)
                 if not m:
-                    fatal("%s lacks numeric suffix in register group" % mff)
-                n = m.group(1)
+                    break
+                mffs += [m[1]]
+                get_line()
+            if not mffs:
+                fatal("unexpected syntax looking for MFF_ constants")
 
-                # Search-and-replace <N> within the comment,
-                # and drop lines that have <x> for x != n.
-                instance = []
-                for x in comment:
-                    y = x.replace('<N>', n)
-                    if re.search('<[0-9]+>', y):
-                        if ('<%s>' % n) not in y:
-                            continue
-                        y = re.sub('<[0-9]+>', '', y)
-                    instance += [y.strip()]
-                fields += [parse_field(mff, instance)]
-        else:
-            fields += [parse_field(mffs[0], comment)]
-        continue
+            if len(mffs) > 1 or '<N>' in comment[0]:
+                for mff in mffs:
+                    # Extract trailing integer.
+                    m = re.match('.*[^0-9]([0-9]+)$', mff)
+                    if not m:
+                        fatal(f"{mff} lacks numeric suffix in register group")
+                    n = m[1]
 
-    input_file.close()
-
+                    # Search-and-replace <N> within the comment,
+                    # and drop lines that have <x> for x != n.
+                    instance = []
+                    for x in comment:
+                        y = x.replace('<N>', n)
+                        if re.search('<[0-9]+>', y):
+                            if f'<{n}>' not in y:
+                                continue
+                            y = re.sub('<[0-9]+>', '', y)
+                        instance += [y.strip()]
+                    fields += [parse_field(mff, instance)]
+            else:
+                fields += [parse_field(mffs[0], comment)]
     if n_errors:
         sys.exit(1)
 
@@ -560,12 +562,12 @@ def field_to_xml(field_node, f, body, summary):
         summary += [" (low %d bits)" % f["n_bits"]]
     summary += [";%s;" % {"MFM_NONE": "no", "MFM_FULLY": "yes"}[f["mask"]]]
     summary += ["%s;" % {True: "yes", False: "no"}[f["writable"]]]
-    summary += ["%s;" % f["prereqs"]]
+    summary += [f'{f["prereqs"]};']
     support = []
     if min_of_version is not None:
-        support += ["OF %s+" % VERSION_REVERSE[min_of_version]]
+        support += [f"OF {VERSION_REVERSE[min_of_version]}+"]
     if min_ovs_version is not None:
-        support += ["OVS %s+" % '.'.join([str(x) for x in min_ovs_version])]
+        support += [f"OVS {'.'.join([str(x) for x in min_ovs_version])}+"]
     summary += ' and '.join(support)
     summary += ["\n"]
 
@@ -626,9 +628,15 @@ l lx.
         oxms = ['none']
     body += ['OXM:;T{\n%s\nT}\n' % r'\[char59] '.join(oxms)]
 
-    nxms = []
-    for header, name, of_version_nr, ovs_version in [x for x in sorted(f['OXM'], key=lambda x: x[2]) if not is_standard_oxm(x[1])]:
-        nxms += [r"\fB%s\fR (%d) since Open vSwitch %s" % (name, header[2], ovs_version)]
+    nxms = [
+        r"\fB%s\fR (%d) since Open vSwitch %s" % (name, header[2], ovs_version)
+        for header, name, of_version_nr, ovs_version in [
+            x
+            for x in sorted(f['OXM'], key=lambda x: x[2])
+            if not is_standard_oxm(x[1])
+        ]
+    ]
+
     if not nxms:
         nxms = ['none']
     body += ['NXM:;T{\n%s\nT}\n' % r'\[char59] '.join(nxms)]
@@ -636,6 +644,7 @@ l lx.
     body += [".TE\n"]
 
     body += ['.PP\n']
+    body += [build.nroff.block_xml_to_nroff(field_node.childNodes)]
     body += [build.nroff.block_xml_to_nroff(field_node.childNodes)]
 
 def group_xml_to_nroff(group_node, fields):
@@ -652,16 +661,19 @@ def group_xml_to_nroff(group_node, fields):
 
     content = [
         '.bp\n',
-        '.SH \"%s\"\n' % build.nroff.text_to_nroff(title.upper() + " FIELDS"),
+        '.SH \"%s\"\n' % build.nroff.text_to_nroff(f"{title.upper()} FIELDS"),
         '.SS "Summary:"\n',
         '.TS\n',
         'tab(;);\n',
         'l l l l l l l.\n',
         'Name;Bytes;Mask;RW?;Prereqs;NXM/OXM Support\n',
-        '\_;\_;\_;\_;\_;\_\n']
+        '\_;\_;\_;\_;\_;\_\n',
+    ]
+
     content += summary
     content += ['.TE\n']
     content += body
+    return ''.join(content)
     return ''.join(content)
 
 def make_oxm_classes_xml(document):
@@ -673,14 +685,12 @@ Prefix;Vendor;Class
     for key in sorted(OXM_CLASSES, key=OXM_CLASSES.get):
         vendor, class_, class_type = OXM_CLASSES.get(key)
         s += r"\fB%s\fR;" % key.rstrip('_')
-        if vendor:
-            s += r"\fL0x%08x\fR;" % vendor
-        else:
-            s += "(none);"
+        s += r"\fL0x%08x\fR;" % vendor if vendor else "(none);"
         s += r"\fL0x%04x\fR;" % class_
         s += "\n"
     e = document.createElement('tbl')
     e.appendChild(document.createTextNode(s))
+    return e
     return e
 
 def recursively_replace(node, name, replacement):

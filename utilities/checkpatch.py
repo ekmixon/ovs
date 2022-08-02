@@ -102,35 +102,29 @@ def open_spell_check_dict():
 
 def get_color_end():
     global colors
-    if colors:
-        return "\033[00m"
-    return ""
+    return "\033[00m" if colors else ""
 
 
 def get_red_begin():
     global colors
-    if colors:
-        return "\033[91m"
-    return ""
+    return "\033[91m" if colors else ""
 
 
 def get_yellow_begin():
     global colors
-    if colors:
-        return "\033[93m"
-    return ""
+    return "\033[93m" if colors else ""
 
 
 def print_error(message):
     global __errors
-    print("%sERROR%s: %s" % (get_red_begin(), get_color_end(), message))
+    print(f"{get_red_begin()}ERROR{get_color_end()}: {message}")
 
     __errors = __errors + 1
 
 
 def print_warning(message):
     global __warnings
-    print("%sWARNING%s: %s" % (get_yellow_begin(), get_color_end(), message))
+    print(f"{get_yellow_begin()}WARNING{get_color_end()}: {message}")
 
     __warnings = __warnings + 1
 
@@ -216,9 +210,7 @@ def is_added_line(line):
 def added_line(line):
     """Returns the line formatted properly by removing diff syntax"""
     global checking_file
-    if not checking_file:
-        return line[1:]
-    return line
+    return line if checking_file else line[1:]
 
 
 def leading_whitespace_is_spaces(line):
@@ -250,10 +242,9 @@ def if_and_for_whitespace_checks(line):
     if (__regex_for_if_missing_whitespace.search(line) is not None and
         __regex_hash_define_for_each.search(line) is None):
         return False
-    if (__regex_for_if_too_much_whitespace.search(line) is not None or
-        __regex_for_if_parens_whitespace.search(line)):
-        return False
-    return True
+    return __regex_for_if_too_much_whitespace.search(
+        line
+    ) is None and not __regex_for_if_parens_whitespace.search(line)
 
 
 def if_and_for_end_with_bracket_check(line):
@@ -279,9 +270,7 @@ def if_and_for_end_with_bracket_check(line):
             return False
     if __regex_conditional_else_bracing.match(line) is not None:
         return False
-    if __regex_conditional_else_bracing2.match(line) is not None:
-        return False
-    return True
+    return __regex_conditional_else_bracing2.match(line) is None
 
 
 def pointer_whitespace_check(line):
@@ -340,12 +329,9 @@ def filter_comments(current_line, keep=False):
 
     state = STATE_NORMAL
     sanitized_line = ''
-    check_state = STATE_NORMAL
     only_whitespace = True
 
-    if keep:
-        check_state = STATE_COMMENT_CONTENTS
-
+    check_state = STATE_COMMENT_CONTENTS if keep else STATE_NORMAL
     for c in current_line:
         if c == '/':
             if state == STATE_NORMAL:
@@ -357,24 +343,26 @@ def filter_comments(current_line, keep=False):
                 c = ''
                 state = STATE_NORMAL
         elif c == '*':
-            if only_whitespace:
+            if (
+                only_whitespace
+                or state != STATE_COMMENT_SLASH
+                and state == STATE_COMMENT_CONTENTS
+            ):
                 # just assume this is a continuation from the previous line
                 # as a comment
                 state = STATE_COMMENT_END_SLASH
             elif state == STATE_COMMENT_SLASH:
                 state = STATE_COMMENT_CONTENTS
                 sanitized_line = sanitized_line[:-1]
-            elif state == STATE_COMMENT_CONTENTS:
-                state = STATE_COMMENT_END_SLASH
         elif state == STATE_COMMENT_END_SLASH:
             # Need to re-introduce the star from the previous state, since
             # it may have been clipped by the state check below.
-            c = '*' + c
+            c = f'*{c}'
             state = STATE_COMMENT_CONTENTS
         elif state == STATE_COMMENT_SLASH:
             # Need to re-introduce the slash from the previous state, since
             # it may have been clipped by the state check below.
-            c = '/' + c
+            c = f'/{c}'
             state = STATE_NORMAL
 
         if state != check_state:
@@ -401,8 +389,10 @@ def check_spelling(line, comment):
         if (len(strword)
                 and not spell_check_dict.check(strword.lower())
                 and not spell_check_dict.check(word.lower())):
-            if any([check_char in word
-                    for check_char in ['=', '(', '-', '_', '/', '\'']]):
+            if any(
+                check_char in word
+                for check_char in ['=', '(', '-', '_', '/', '\'']
+            ):
                 skip = True
 
             # special case the '.'
@@ -428,13 +418,13 @@ def check_spelling(line, comment):
 
 def __check_doc_is_listed(text, doctype, docdir, docfile):
     if doctype == 'rst':
-        beginre = re.compile(r'\+\+\+.*{}/index.rst'.format(docdir))
-        docre = re.compile(r'\n\+.*{}'.format(docfile.replace('.rst', '')))
+        beginre = re.compile(f'\+\+\+.*{docdir}/index.rst')
+        docre = re.compile(f"\n\+.*{docfile.replace('.rst', '')}")
     elif doctype == 'automake':
         beginre = re.compile(r'\+\+\+.*Documentation/automake.mk')
-        docre = re.compile(r'\n\+\t{}/{}'.format(docdir, docfile))
+        docre = re.compile(f'\n\+\t{docdir}/{docfile}')
     else:
-        raise NotImplementedError("Invalid doctype: {}".format(doctype))
+        raise NotImplementedError(f"Invalid doctype: {doctype}")
 
     res = beginre.search(text)
     if res is None:
@@ -443,17 +433,10 @@ def __check_doc_is_listed(text, doctype, docdir, docfile):
     hunkstart = res.span()[1]
     hunkre = re.compile(r'\n(---|\+\+\+) (\S+)')
     res = hunkre.search(text[hunkstart:])
-    if res is None:
-        hunkend = len(text)
-    else:
-        hunkend = hunkstart + res.span()[0]
-
+    hunkend = len(text) if res is None else hunkstart + res.span()[0]
     hunk = text[hunkstart:hunkend]
     # find if the file is being added.
-    if docre.search(hunk) is not None:
-        return False
-
-    return True
+    return docre.search(hunk) is None
 
 
 def __check_new_docs(text, doctype):
@@ -475,14 +458,11 @@ def __check_new_docs(text, doctype):
 
         if __check_doc_is_listed(text, doctype, docdir, docfile):
             if doctype == 'rst':
-                print_warning("New doc {} not listed in {}/index.rst".format(
-                              docfile, docdir))
+                print_warning(f"New doc {docfile} not listed in {docdir}/index.rst")
             elif doctype == 'automake':
-                print_warning("New doc {} not listed in "
-                              "Documentation/automake.mk".format(docfile))
+                print_warning(f"New doc {docfile} not listed in Documentation/automake.mk")
             else:
-                raise NotImplementedError("Invalid doctype: {}".format(
-                                          doctype))
+                raise NotImplementedError(f"Invalid doctype: {doctype}")
 
             failed = True
 
@@ -701,11 +681,14 @@ def interim_line_check(current_file, line, lineno):
     for check in get_file_type_checks(current_file):
         if 'prereq' in check and not check['prereq'](line):
             continue
-        if 'interim_line' in check and check['interim_line']:
-            if check['check'](line):
-                if 'print' in check:
-                    check['print']()
-                    print_line = True
+        if (
+            'interim_line' in check
+            and check['interim_line']
+            and check['check'](line)
+            and 'print' in check
+        ):
+            check['print']()
+            print_line = True
 
     if print_line:
         if checking_file:
@@ -764,10 +747,9 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
             parse = PARSE_STATE_CHANGE_BODY
 
         if parse == PARSE_STATE_DIFF_HEADER:
-            match = hunks.match(line)
-            if match:
+            if match := hunks.match(line):
                 parse = PARSE_STATE_CHANGE_BODY
-                current_file = match.group(2)[2:]
+                current_file = match[2][2:]
                 print_file_name = current_file
             continue
         elif parse == PARSE_STATE_HEADING:
@@ -793,16 +775,15 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                     # Check that the author, all co-authors, and the
                     # committer (if any) signed off.
                     if author not in signatures:
-                        print_error("Author %s needs to sign off." % author)
+                        print_error(f"Author {author} needs to sign off.")
                     for ca in co_authors:
                         if ca not in signatures:
-                            print_error("Co-author %s needs to sign off." % ca)
+                            print_error(f"Co-author {ca} needs to sign off.")
                             break
                     if (committer
                         and author != committer
                         and committer not in signatures):
-                        print_error("Committer %s needs to sign off."
-                                    % committer)
+                        print_error(f"Committer {committer} needs to sign off.")
 
                     # Check for signatures that we do not expect.
                     # This is only a warning because there can be,
@@ -822,15 +803,15 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                                       "committers: %s"
                                       % ", ".join(extra_sigs))
             elif is_committer.match(line):
-                committer = is_committer.match(line).group(2)
+                committer = is_committer.match(line)[2]
             elif is_author.match(line):
-                author = is_author.match(line).group(2)
+                author = is_author.match(line)[2]
             elif is_signature.match(line):
                 m = is_signature.match(line)
-                signatures.append(m.group(2))
+                signatures.append(m[2])
             elif is_co_author.match(line):
                 m = is_co_author.match(line)
-                co_authors.append(m.group(2))
+                co_authors.append(m[2])
             elif (is_gerrit_change_id.match(line) and
                   not skip_gerrit_change_id_check):
                 print_error(
@@ -840,17 +821,15 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                 check_spelling(line, False)
 
         elif parse == PARSE_STATE_CHANGE_BODY:
-            newfile = hunks.match(line)
-            if newfile:
-                current_file = newfile.group(2)[2:]
+            if newfile := hunks.match(line):
+                current_file = newfile[2][2:]
                 print_file_name = current_file
                 continue
-            reset_line_number = hunk_differences.match(line)
-            if reset_line_number:
+            if reset_line_number := hunk_differences.match(line):
                 empty_return_check_state = RETURN_CHECK_INITIAL_STATE
-                lineno = int(reset_line_number.group(3))
+                lineno = int(reset_line_number[3])
                 if lineno < 0:
-                    lineno = -1 * lineno
+                    lineno *= -1
                 lineno -= 1
 
             if is_subtracted_line(line):
@@ -879,9 +858,7 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
             run_checks(current_file, cmp_line, lineno)
 
     run_file_checks(text)
-    if __errors or __warnings:
-        return EXIT_FAILURE
-    return 0
+    return EXIT_FAILURE if __errors or __warnings else 0
 
 
 def usage():

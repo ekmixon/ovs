@@ -23,12 +23,12 @@ import time
 ENV = os.environ
 HOME = ENV["HOME"]
 PWD = os.getcwd()
-OVS_SRC = HOME + "/ovs"
-if os.path.exists(PWD + "/README.rst"):
+OVS_SRC = f"{HOME}/ovs"
+if os.path.exists(f"{PWD}/README.rst"):
     OVS_SRC = PWD  # Use current directory as OVS source tree
-RUNDIR = OVS_SRC + "/_run"
-BUILD_GCC = OVS_SRC + "/_build-gcc"
-BUILD_CLANG = OVS_SRC + "/_build-clang"
+RUNDIR = f"{OVS_SRC}/_run"
+BUILD_GCC = f"{OVS_SRC}/_build-gcc"
+BUILD_CLANG = f"{OVS_SRC}/_build-clang"
 
 options = None
 parser = None
@@ -38,7 +38,7 @@ commands = []
 def set_path(build):
     PATH = "%(ovs)s/utilities:%(ovs)s/ovsdb:%(ovs)s/vswitchd" % {"ovs": build}
 
-    ENV["PATH"] = PATH + ":" + ENV["PATH"]
+    ENV["PATH"] = f"{PATH}:" + ENV["PATH"]
 
 
 def _sh(*args, **kwargs):
@@ -67,15 +67,21 @@ def conf():
     tag()
 
     try:
-        os.remove(OVS_SRC + "/Makefile")
+        os.remove(f"{OVS_SRC}/Makefile")
     except OSError:
         pass
 
-    configure = ["../configure",
-                 "--prefix=" + RUNDIR, "--localstatedir=" + RUNDIR,
-                 "--with-logdir=%s/log" % RUNDIR,
-                 "--with-rundir=%s/run" % RUNDIR,
-                 "--enable-silent-rules", "--with-dbdir=" + RUNDIR, "--silent"]
+    configure = [
+        "../configure",
+        f"--prefix={RUNDIR}",
+        f"--localstatedir={RUNDIR}",
+        f"--with-logdir={RUNDIR}/log",
+        f"--with-rundir={RUNDIR}/run",
+        "--enable-silent-rules",
+        f"--with-dbdir={RUNDIR}",
+        "--silent",
+    ]
+
 
     cflags = "-g -fno-omit-frame-pointer"
 
@@ -86,16 +92,16 @@ def conf():
         configure.append("--enable-cache-time")
 
     if options.mandir:
-        configure.append("--mandir=" + options.mandir)
+        configure.append(f"--mandir={options.mandir}")
 
     if options.with_dpdk:
-        configure.append("--with-dpdk=" + options.with_dpdk)
+        configure.append(f"--with-dpdk={options.with_dpdk}")
         cflags += " -Wno-cast-align -Wno-bad-function-cast"  # DPDK warnings.
 
     if options.optimize is None:
         options.optimize = 0
 
-    cflags += " -O%s" % str(options.optimize)
+    cflags += f" -O{str(options.optimize)}"
 
     ENV["CFLAGS"] = cflags
 
@@ -107,7 +113,7 @@ def conf():
         pass  # Directory exists.
 
     os.chdir(BUILD_GCC)
-    _sh(*(configure + ["--with-linux=/lib/modules/%s/build" % uname()]))
+    _sh(*configure + [f"--with-linux=/lib/modules/{uname()}/build"])
 
     try:
         _sh("clang --version", check=True)
@@ -131,31 +137,26 @@ def conf():
         os.chdir(BUILD_CLANG)
         _sh(*configure)
 
-    if sparse:
-        c1 = "C=1"
-    else:
-        c1 = ""
-
+    c1 = "C=1" if sparse else ""
     os.chdir(OVS_SRC)
 
     make_str = "\t$(MAKE) -C %s $@\n"
 
-    mf = open(OVS_SRC + "/Makefile", "w")
-    mf.write("all:\n%:\n")
-    if clang:
-        mf.write(make_str % BUILD_CLANG)
-    mf.write("\t$(MAKE) -C %s %s $@\n" % (BUILD_GCC, c1))
-    mf.write("\ncheck-valgrind:\n")
-    mf.write("\ncheck:\n")
-    mf.write(make_str % BUILD_GCC)
-    mf.close()
+    with open(f"{OVS_SRC}/Makefile", "w") as mf:
+        mf.write("all:\n%:\n")
+        if clang:
+            mf.write(make_str % BUILD_CLANG)
+        mf.write("\t$(MAKE) -C %s %s $@\n" % (BUILD_GCC, c1))
+        mf.write("\ncheck-valgrind:\n")
+        mf.write("\ncheck:\n")
+        mf.write(make_str % BUILD_GCC)
 
 
 commands.append(conf)
 
 
 def make(args=""):
-    make = "make -s -j 8 " + args
+    make = f"make -s -j 8 {args}"
     _sh(make)
 
 
@@ -164,16 +165,10 @@ commands.append(make)
 
 def check():
     flags = ""
-    if options.jobs:
-        flags += "-j%d " % options.jobs
-    else:
-        flags += "-j8 "
+    flags += "-j%d " % options.jobs if options.jobs else "-j8 "
     if options.tests:
         for arg in str.split(options.tests):
-            if arg[0].isdigit():
-                flags += "%s " % arg
-            else:
-                flags += "-k %s " % arg
+            flags += f"{arg} " if arg[0].isdigit() else f"-k {arg} "
     ENV["TESTSUITEFLAGS"] = flags
     make("check")
 
@@ -204,7 +199,7 @@ commands.append(tag)
 def kill():
     sudo()
     for proc in ["ovs-vswitchd", "ovsdb-server"]:
-        if os.path.exists("%s/run/openvswitch/%s.pid" % (RUNDIR, proc)):
+        if os.path.exists(f"{RUNDIR}/run/openvswitch/{proc}.pid"):
             _sh("ovs-appctl", "-t", proc, "exit", check=False)
             time.sleep(.1)
         _sh("killall", "-q", "-2", proc, check=False)
@@ -229,11 +224,11 @@ def run():
     sudo()
     kill()
     for d in ["log", "run"]:
-        d = "%s/%s" % (RUNDIR, d)
+        d = f"{RUNDIR}/{d}"
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
 
-    pki_dir = RUNDIR + "/pki"
+    pki_dir = f"{RUNDIR}/pki"
     if not os.path.exists(pki_dir):
         os.mkdir(pki_dir)
         os.chdir(pki_dir)
@@ -241,13 +236,18 @@ def run():
         _sh("ovs-pki req+sign ovsclient")
         os.chdir(OVS_SRC)
 
-    if not os.path.exists(RUNDIR + "/conf.db"):
-        _sh("ovsdb-tool", "create", RUNDIR + "/conf.db",
-            OVS_SRC + "/vswitchd/vswitch.ovsschema")
+    if not os.path.exists(f"{RUNDIR}/conf.db"):
+        _sh(
+            "ovsdb-tool",
+            "create",
+            f"{RUNDIR}/conf.db",
+            f"{OVS_SRC}/vswitchd/vswitch.ovsschema",
+        )
+
 
     opts = ["--pidfile", "--log-file"]
 
-    if (options.user == "") or (options.user == "root:root"):
+    if options.user in ["", "root:root"]:
         _sh("chown", "root:root", "-R", RUNDIR)
         if '--user' in sys.argv:
             sys.argv.remove("--user")
@@ -258,13 +258,22 @@ def run():
     if (options.monitor):
         opts = ["--monitor"] + opts
 
-    _sh(*(["ovsdb-server",
-           "--remote=punix:%s/run/db.sock" % RUNDIR,
-           "--remote=db:Open_vSwitch,Open_vSwitch,manager_options",
-           "--private-key=db:Open_vSwitch,SSL,private_key",
-           "--certificate=db:Open_vSwitch,SSL,certificate",
-           "--bootstrap-ca-cert=db:Open_vSwitch,SSL,ca_cert",
-           "--detach", "-vconsole:off"] + opts))
+    _sh(
+        *(
+            [
+                "ovsdb-server",
+                f"--remote=punix:{RUNDIR}/run/db.sock",
+                "--remote=db:Open_vSwitch,Open_vSwitch,manager_options",
+                "--private-key=db:Open_vSwitch,SSL,private_key",
+                "--certificate=db:Open_vSwitch,SSL,certificate",
+                "--bootstrap-ca-cert=db:Open_vSwitch,SSL,ca_cert",
+                "--detach",
+                "-vconsole:off",
+            ]
+            + opts
+        )
+    )
+
 
     _sh("ovs-vsctl --no-wait --bootstrap set-ssl %s/ovsclient-privkey.pem"
         " %s/ovsclient-cert.pem %s/vswitchd.cacert"
@@ -273,11 +282,10 @@ def run():
     version = version[0].decode().strip().split()[3]
     root_uuid = _sh("ovs-vsctl --no-wait --bare list Open_vSwitch",
                     capture=True)[0].decode().strip()
-    _sh("ovs-vsctl --no-wait set Open_vSwitch %s ovs_version=%s"
-        % (root_uuid, version))
+    _sh(f"ovs-vsctl --no-wait set Open_vSwitch {root_uuid} ovs_version={version}")
 
     build = BUILD_CLANG if options.clang else BUILD_GCC
-    cmd = [build + "/vswitchd/ovs-vswitchd"]
+    cmd = [f"{build}/vswitchd/ovs-vswitchd"]
 
     if options.dpdk:
         _sh("ovs-vsctl --no-wait set Open_vSwitch %s "
@@ -291,11 +299,16 @@ def run():
     if options.gdb:
         cmd = ["gdb", "--args"] + cmd
     elif options.valgrind:
-        cmd = ["valgrind", "--track-origins=yes", "--leak-check=full",
-               "--suppressions=%s/tests/glibc.supp" % OVS_SRC,
-               "--suppressions=%s/tests/openssl.supp" % OVS_SRC] + cmd
+        cmd = [
+            "valgrind",
+            "--track-origins=yes",
+            "--leak-check=full",
+            f"--suppressions={OVS_SRC}/tests/glibc.supp",
+            f"--suppressions={OVS_SRC}/tests/openssl.supp",
+        ] + cmd
+
     else:
-        opts = opts + ["-vconsole:off", "--detach", "--enable-dummy"]
+        opts += ["-vconsole:off", "--detach", "--enable-dummy"]
     _sh(*(cmd + opts))
 
 
@@ -314,8 +327,8 @@ def modinst():
         pass  # Module isn't loaded
 
     try:
-        _sh("rm -f /lib/modules/%s/extra/openvswitch.ko" % uname())
-        _sh("rm -f /lib/modules/%s/extra/vport-*.ko" % uname())
+        _sh(f"rm -f /lib/modules/{uname()}/extra/openvswitch.ko")
+        _sh(f"rm -f /lib/modules/{uname()}/extra/vport-*.ko")
     except subprocess.CalledProcessError:
         pass  # Module isn't installed
 
@@ -414,7 +427,7 @@ def main():
 
     description = "Open vSwitch developer configuration. Try `%prog doc`."
     cmd_names = [c.__name__ for c in commands]
-    usage = "usage: %prog" + " [options] [%s] ..." % "|".join(cmd_names)
+    usage = "usage: %prog" + f' [options] [{"|".join(cmd_names)}] ...'
     parser = optparse.OptionParser(usage=usage, description=description)
 
     group = optparse.OptionGroup(parser, "conf")
@@ -430,9 +443,14 @@ def main():
 
     group = optparse.OptionGroup(parser, "Optimization Flags")
     for i in ["s", "g"] + list(range(4)) + ["fast"]:
-        group.add_option("--O%s" % str(i), dest="optimize",
-                         action="store_const", const=i,
-                         help="compile with -O%s" % str(i))
+        group.add_option(
+            f"--O{str(i)}",
+            dest="optimize",
+            action="store_const",
+            const=i,
+            help=f"compile with -O{str(i)}",
+        )
+
     parser.add_option_group(group)
 
     group = optparse.OptionGroup(parser, "check")
@@ -464,7 +482,7 @@ def main():
 
     for arg in args:
         if arg not in cmd_names:
-            print("Unknown argument " + arg)
+            print(f"Unknown argument {arg}")
             doc()
 
     if options.clang:
@@ -475,7 +493,7 @@ def main():
     try:
         os.chdir(OVS_SRC)
     except OSError:
-        print("Missing %s." % OVS_SRC)
+        print(f"Missing {OVS_SRC}.")
         doc()
 
     for arg in args:

@@ -5,11 +5,10 @@ import sys
 from scapy.all import RandMAC, RandIP, PcapWriter, RandIP6, RandShort, fuzz
 from scapy.all import IPv6, Dot1Q, IP, Ether, UDP, TCP
 
-path = str(sys.argv[1]) + "/pcap/fuzzy.pcap"
+path = f"{str(sys.argv[1])}/pcap/fuzzy.pcap"
 pktdump = PcapWriter(path, append=False, sync=True)
 
-for i in range(0, 2000):
-
+for _ in range(2000):
     # Generate random protocol bases, use a fuzz() over the combined packet
     # for full fuzzing.
     eth = Ether(src=RandMAC(), dst=RandMAC())

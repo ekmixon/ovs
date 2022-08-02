@@ -190,14 +190,12 @@ class SortedList(MutableSequence):
         :return: sorted list or sorted-key list instance
 
         """
-        # pylint: disable=unused-argument
         if key is None:
             return object.__new__(cls)
+        if cls is SortedList:
+            return object.__new__(SortedKeyList)
         else:
-            if cls is SortedList:
-                return object.__new__(SortedKeyList)
-            else:
-                raise TypeError('inherit SortedKeyList for key argument')
+            raise TypeError('inherit SortedKeyList for key argument')
 
 
     @property
@@ -265,9 +263,7 @@ class SortedList(MutableSequence):
 
         """
         _lists = self._lists
-        _maxes = self._maxes
-
-        if _maxes:
+        if _maxes := self._maxes:
             pos = bisect_right(_maxes, value)
 
             if pos == len(_maxes):
@@ -310,13 +306,12 @@ class SortedList(MutableSequence):
             _maxes.insert(pos + 1, half[-1])
 
             del _index[:]
-        else:
-            if _index:
-                child = self._offset + pos
-                while child:
-                    _index[child] += 1
-                    child = (child - 1) >> 1
-                _index[0] += 1
+        elif _index:
+            child = self._offset + pos
+            while child:
+                _index[child] += 1
+                child = (child - 1) >> 1
+            _index[0] += 1
 
 
     def update(self, iterable):
@@ -879,16 +874,15 @@ class SortedList(MutableSequence):
             # be the desired behavior.
 
             indices = range(start, stop, step)
-            return list(self._getitem(index) for index in indices)
+            return [self._getitem(index) for index in indices]
         else:
-            if self._len:
-                if index == 0:
-                    return _lists[0][0]
-                elif index == -1:
-                    return _lists[-1][-1]
-            else:
+            if not self._len:
                 raise IndexError('list index out of range')
 
+            if index == -1:
+                return _lists[-1][-1]
+            elif index == 0:
+                return _lists[0][0]
             if 0 <= index < len(_lists[0]):
                 return _lists[0][index]
 
@@ -1108,21 +1102,21 @@ class SortedList(MutableSequence):
         if minimum is None:
             min_pos = 0
             min_idx = 0
-        else:
-            if inclusive[0]:
-                min_pos = bisect_left(_maxes, minimum)
+        elif inclusive[0]:
+            min_pos = bisect_left(_maxes, minimum)
 
-                if min_pos == len(_maxes):
-                    return iter(())
+            if min_pos == len(_maxes):
+                return iter(())
 
-                min_idx = bisect_left(_lists[min_pos], minimum)
             else:
-                min_pos = bisect_right(_maxes, minimum)
+                min_idx = bisect_left(_lists[min_pos], minimum)
+        else:
+            min_pos = bisect_right(_maxes, minimum)
 
-                if min_pos == len(_maxes):
-                    return iter(())
+            if min_pos == len(_maxes):
+                return iter(())
 
-                min_idx = bisect_right(_lists[min_pos], minimum)
+            min_idx = bisect_right(_lists[min_pos], minimum)
 
         # Calculate the maximum (pos, idx) pair. By default this location
         # will be exclusive in our calculation.
@@ -1130,23 +1124,22 @@ class SortedList(MutableSequence):
         if maximum is None:
             max_pos = len(_maxes) - 1
             max_idx = len(_lists[max_pos])
-        else:
-            if inclusive[1]:
-                max_pos = bisect_right(_maxes, maximum)
+        elif inclusive[1]:
+            max_pos = bisect_right(_maxes, maximum)
 
-                if max_pos == len(_maxes):
-                    max_pos -= 1
-                    max_idx = len(_lists[max_pos])
-                else:
-                    max_idx = bisect_right(_lists[max_pos], maximum)
+            if max_pos == len(_maxes):
+                max_pos -= 1
+                max_idx = len(_lists[max_pos])
             else:
-                max_pos = bisect_left(_maxes, maximum)
+                max_idx = bisect_right(_lists[max_pos], maximum)
+        else:
+            max_pos = bisect_left(_maxes, maximum)
 
-                if max_pos == len(_maxes):
-                    max_pos -= 1
-                    max_idx = len(_lists[max_pos])
-                else:
-                    max_idx = bisect_left(_lists[max_pos], maximum)
+            if max_pos == len(_maxes):
+                max_pos -= 1
+                max_idx = len(_lists[max_pos])
+            else:
+                max_idx = bisect_left(_lists[max_pos], maximum)
 
         return self._islice(min_pos, min_idx, max_pos, max_idx, reverse)
 
@@ -1412,9 +1405,7 @@ class SortedList(MutableSequence):
             start = 0
         if start < 0:
             start += _len
-        if start < 0:
-            start = 0
-
+        start = max(start, 0)
         if stop is None:
             stop = _len
         if stop < 0:
@@ -1644,7 +1635,7 @@ class SortedList(MutableSequence):
             # but the last sublist.
 
             half = self._load >> 1
-            for pos in range(0, len(self._lists) - 1):
+            for pos in range(len(self._lists) - 1):
                 assert len(self._lists[pos]) >= half
 
             if self._index:
@@ -1836,8 +1827,8 @@ class SortedKeyList(SortedList):
             _load = self._load
 
             _lists_pos = _lists[pos]
-            _keys_pos = _keys[pos]
             half = _lists_pos[_load:]
+            _keys_pos = _keys[pos]
             half_keys = _keys_pos[_load:]
             del _lists_pos[_load:]
             del _keys_pos[_load:]
@@ -1848,13 +1839,12 @@ class SortedKeyList(SortedList):
             _maxes.insert(pos + 1, half_keys[-1])
 
             del _index[:]
-        else:
-            if _index:
-                child = self._offset + pos
-                while child:
-                    _index[child] += 1
-                    child = (child - 1) >> 1
-                _index[0] += 1
+        elif _index:
+            child = self._offset + pos
+            while child:
+                _index[child] += 1
+                child = (child - 1) >> 1
+            _index[0] += 1
 
 
     def update(self, iterable):
@@ -2187,21 +2177,21 @@ class SortedKeyList(SortedList):
         if min_key is None:
             min_pos = 0
             min_idx = 0
-        else:
-            if inclusive[0]:
-                min_pos = bisect_left(_maxes, min_key)
+        elif inclusive[0]:
+            min_pos = bisect_left(_maxes, min_key)
 
-                if min_pos == len(_maxes):
-                    return iter(())
+            if min_pos == len(_maxes):
+                return iter(())
 
-                min_idx = bisect_left(_keys[min_pos], min_key)
             else:
-                min_pos = bisect_right(_maxes, min_key)
+                min_idx = bisect_left(_keys[min_pos], min_key)
+        else:
+            min_pos = bisect_right(_maxes, min_key)
 
-                if min_pos == len(_maxes):
-                    return iter(())
+            if min_pos == len(_maxes):
+                return iter(())
 
-                min_idx = bisect_right(_keys[min_pos], min_key)
+            min_idx = bisect_right(_keys[min_pos], min_key)
 
         # Calculate the maximum (pos, idx) pair. By default this location
         # will be exclusive in our calculation.
@@ -2209,23 +2199,22 @@ class SortedKeyList(SortedList):
         if max_key is None:
             max_pos = len(_maxes) - 1
             max_idx = len(_keys[max_pos])
-        else:
-            if inclusive[1]:
-                max_pos = bisect_right(_maxes, max_key)
+        elif inclusive[1]:
+            max_pos = bisect_right(_maxes, max_key)
 
-                if max_pos == len(_maxes):
-                    max_pos -= 1
-                    max_idx = len(_keys[max_pos])
-                else:
-                    max_idx = bisect_right(_keys[max_pos], max_key)
+            if max_pos == len(_maxes):
+                max_pos -= 1
+                max_idx = len(_keys[max_pos])
             else:
-                max_pos = bisect_left(_maxes, max_key)
+                max_idx = bisect_right(_keys[max_pos], max_key)
+        else:
+            max_pos = bisect_left(_maxes, max_key)
 
-                if max_pos == len(_maxes):
-                    max_pos -= 1
-                    max_idx = len(_keys[max_pos])
-                else:
-                    max_idx = bisect_left(_keys[max_pos], max_key)
+            if max_pos == len(_maxes):
+                max_pos -= 1
+                max_idx = len(_keys[max_pos])
+            else:
+                max_idx = bisect_left(_keys[max_pos], max_key)
 
         return self._islice(min_pos, min_idx, max_pos, max_idx, reverse)
 
@@ -2448,9 +2437,7 @@ class SortedKeyList(SortedList):
             start = 0
         if start < 0:
             start += _len
-        if start < 0:
-            start = 0
-
+        start = max(start, 0)
         if stop is None:
             stop = _len
         if stop < 0:
@@ -2602,7 +2589,7 @@ class SortedKeyList(SortedList):
             # but the last sublist.
 
             half = self._load >> 1
-            for pos in range(0, len(self._lists) - 1):
+            for pos in range(len(self._lists) - 1):
                 assert len(self._lists[pos]) >= half
 
             if self._index:

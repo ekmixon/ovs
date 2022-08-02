@@ -68,7 +68,7 @@ class Table(object):
     def get_by_uuid(self, uuid):
         recs = [rec for rec in self.records if rec["uuid"] == uuid]
         if len(recs) != 1:
-            raise Failure("No record with UUID %s" % uuid)
+            raise Failure(f"No record with UUID {uuid}")
         return RecordRef(recs[0])
 
     def get_record(self, record_ref):

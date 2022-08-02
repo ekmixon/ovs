@@ -55,11 +55,7 @@ class DbSchema(object):
 
     def __root_set_size(self):
         """Returns the number of tables in the schema's root set."""
-        n_root = 0
-        for table in self.tables.values():
-            if table.is_root:
-                n_root += 1
-        return n_root
+        return sum(bool(table.is_root) for table in self.tables.values())
 
     @staticmethod
     def from_json(json, allow_extensions=False):
@@ -90,9 +86,11 @@ class DbSchema(object):
         # output "isRoot" in table schemas.
         default_is_root = self.__root_set_size() == len(self.tables)
 
-        tables = {}
-        for table in self.tables.values():
-            tables[table.name] = table.to_json(default_is_root)
+        tables = {
+            table.name: table.to_json(default_is_root)
+            for table in self.tables.values()
+        }
+
         json = {"name": self.name, "tables": tables}
         if self.version:
             json["version"] = self.version
@@ -108,9 +106,11 @@ class DbSchema(object):
 
         base.ref_table = self.tables.get(base.ref_table_name)
         if not base.ref_table:
-            raise error.Error("column %s %s refers to undefined table %s"
-                              % (column.name, base_name, base.ref_table_name),
-                              tag="syntax error")
+            raise error.Error(
+                f"column {column.name} {base_name} refers to undefined table {base.ref_table_name}",
+                tag="syntax error",
+            )
+
 
         if base.is_strong_ref() and not base.ref_table.is_root:
             # We cannot allow a strong reference to a non-root table to be
@@ -162,12 +162,11 @@ def column_set_from_json(json, columns):
                 raise error.Error("array of distinct column names expected",
                                   json)
             elif column_name not in columns:
-                raise error.Error("%s is not a valid column name"
-                                  % column_name, json)
+                raise error.Error(f"{column_name} is not a valid column name", json)
         if len(set(json)) != len(json):
             # Duplicate.
             raise error.Error("array of distinct column names expected", json)
-        return tuple([columns[column_name] for column_name in json])
+        return tuple(columns[column_name] for column_name in json)
 
 
 class TableSchema(object):
@@ -183,7 +182,7 @@ class TableSchema(object):
 
     @staticmethod
     def from_json(json, name, allow_extensions=False):
-        parser = ovs.db.parser.Parser(json, "table schema for table %s" % name)
+        parser = ovs.db.parser.Parser(json, f"table schema for table {name}")
         columns_json = parser.get("columns", [dict])
         mutable = parser.get_optional("mutable", [bool], True)
         max_rows = parser.get_optional("maxRows", [int])
@@ -271,11 +270,10 @@ class ColumnSchema(object):
 
     @staticmethod
     def from_json(json, name, allow_extensions=False):
-        parser = ovs.db.parser.Parser(json, "schema for column %s" % name)
+        parser = ovs.db.parser.Parser(json, f"schema for column {name}")
         mutable = parser.get_optional("mutable", [bool], True)
         ephemeral = parser.get_optional("ephemeral", [bool], False)
-        _types = [str]
-        _types.extend([dict])
+        _types = [str, *[dict]]
         type_ = ovs.db.types.Type.from_json(parser.get("type", _types))
         if allow_extensions:
             extensions = parser.get_optional("extensions", [dict], {})
